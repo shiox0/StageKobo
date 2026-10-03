@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>すてーじ工房 — Idol Stage Kit</title>
+<style>
+:root{
+  --bg:#0b0d1a; --panel:#11142a; --panel2:#171b36; --line:#262b52; --text:#e9ecff; --dim:#9aa3d6;
+  --mint:#7ff5d6; --pink:#ff8fd0; --sky:#8fd3ff; --warn:#ffcf6b; --danger:#ff6b8a;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+  font-family:"Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic UI","Meiryo",system-ui,sans-serif;font-size:13px;overflow:hidden}
+#app{display:flex;height:100vh;width:100vw}
+#panel{width:350px;min-width:350px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;z-index:5}
+#panel header{padding:12px 14px 8px;border-bottom:1px solid var(--line)}
+#panel header h1{margin:0;font-size:17px;letter-spacing:.06em}
+#panel header h1 span{background:linear-gradient(90deg,var(--mint),var(--sky),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent}
+#panel header small{color:var(--dim);font-size:11px}
+#tabs{display:flex;flex-wrap:wrap;gap:4px;padding:8px 10px;border-bottom:1px solid var(--line)}
+#tabs button{flex:1 1 30%;background:var(--panel2);color:var(--dim);border:1px solid var(--line);border-radius:8px;padding:6px 4px;font-size:12px;cursor:pointer;font-family:inherit}
+#tabs button.on{background:linear-gradient(135deg,#2b2f63,#3a2a5c);color:#fff;border-color:#5a5fb0}
+#tabBody{flex:1;overflow-y:auto;padding:8px 10px 40px}
+#tabBody::-webkit-scrollbar{width:8px}#tabBody::-webkit-scrollbar-thumb{background:#2d335f;border-radius:4px}
+details.sec{background:var(--panel2);border:1px solid var(--line);border-radius:10px;margin:0 0 8px;overflow:hidden}
+details.sec>summary{padding:8px 10px;cursor:pointer;font-weight:bold;font-size:12.5px;list-style:none;display:flex;align-items:center;gap:6px}
+details.sec>summary::before{content:"▸";color:var(--mint);transition:transform .15s}
+details.sec[open]>summary::before{transform:rotate(90deg)}
+details.sec>.body{padding:4px 10px 10px}
+.row{display:flex;align-items:center;gap:6px;margin:5px 0;min-height:24px}
+.row>label{flex:0 0 96px;color:var(--dim);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row input[type=range]{flex:1;accent-color:var(--mint);min-width:0}
+.row input[type=number]{width:58px;background:#0c0f20;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:2px 4px;font-family:inherit;font-size:12px}
+.row input[type=text]{flex:1;background:#0c0f20;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit}
+.row select{flex:1;background:#0c0f20;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:3px 4px;font-family:inherit;font-size:12px;min-width:0}
+.row input[type=color]{width:44px;height:24px;border:1px solid var(--line);border-radius:6px;background:none;padding:0;cursor:pointer}
+.row .hex{color:var(--dim);font-size:11px;font-family:monospace}
+.row input[type=checkbox]{accent-color:var(--pink);width:16px;height:16px}
+.btn{background:#222754;color:var(--text);border:1px solid #3a4084;border-radius:8px;padding:5px 9px;cursor:pointer;font-family:inherit;font-size:12px;white-space:nowrap}
+.btn:hover{background:#2c3270;border-color:var(--mint)}
+.btn.pri{background:linear-gradient(135deg,#2bb59a,#3a7bd5);border-color:#5ee0c4;color:#fff}
+.btn.pink{background:linear-gradient(135deg,#d0559f,#8a4bd6);border-color:#ff9fd8;color:#fff}
+.btn.danger{background:#4a1f30;border-color:#8a3150}
+.btn.on{outline:2px solid var(--mint);outline-offset:1px}
+.btn.sm{padding:3px 7px;font-size:11px}
+.btns{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0}
+.note{color:var(--dim);font-size:11px;line-height:1.55;margin:4px 0 6px}
+.note b{color:var(--mint);font-weight:normal}
+.palette{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.palette .btn{text-align:left;overflow:hidden;text-overflow:ellipsis}
+.catTitle{color:var(--pink);font-size:11px;margin:8px 0 4px;letter-spacing:.08em}
+.list{max-height:230px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;background:#0c0f20}
+.list .item{display:flex;align-items:center;gap:6px;padding:5px 8px;border-bottom:1px solid #1b1f3d;cursor:pointer}
+.list .item:hover{background:#171c3c}
+.list .item.sel{background:#253064}
+.list .item .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.list .item .tag{font-size:10px;color:var(--dim)}
+.list .item .eye{opacity:.8;font-size:11px;color:var(--mint)}
+.list .item .eye.off{color:#555}
+.cue{display:flex;align-items:center;gap:6px;padding:5px 8px;border-bottom:1px solid #1b1f3d;cursor:pointer}
+.cue.on{background:linear-gradient(90deg,#2a3576,#3d2a6a)}
+.cue .no{color:var(--mint);font-family:monospace;width:18px}
+.xyz{display:flex;gap:4px;flex:1}
+.xyz input{width:100%!important}
+#view{flex:1;position:relative;overflow:hidden}
+#view canvas{display:block}
+.hud{position:absolute;display:flex;gap:5px;align-items:center;flex-wrap:wrap;z-index:3}
+#topbar{top:10px;left:10px;right:10px}
+#topbar .grp{display:flex;gap:4px;background:rgba(12,14,30,.72);border:1px solid var(--line);border-radius:10px;padding:4px;backdrop-filter:blur(6px)}
+#topbar .sp{flex:1}
+/* リモコン */
+#remote{position:absolute;z-index:4;width:300px;max-height:calc(100% - 60px);display:flex;flex-direction:column;background:rgba(14,16,36,.88);border:1px solid #39407a;border-radius:16px;backdrop-filter:blur(8px);box-shadow:0 10px 34px rgba(0,0,0,.5);user-select:none}
+#remote .rmHead{display:flex;align-items:center;gap:4px;padding:7px 8px;border-bottom:1px solid #2a2f5c;cursor:grab;flex-wrap:wrap;touch-action:none}
+#remote.min .rmHead{border-bottom:none}
+#remote.min .rmBody{display:none}
+#remote .rmGrip{color:#6c74b8;font-size:13px}
+#remote .rmTitle{font-size:11px;letter-spacing:.22em;color:var(--mint);font-weight:bold;margin-right:4px}
+#remote .rmSep{width:1px;height:18px;background:#343a6e;margin:0 2px}
+#remote .rmFill{flex:1}
+#remote .bpm{font-family:monospace;font-size:15px;width:34px;text-align:center;color:var(--mint)}
+#remote .beat{width:10px;height:10px;border-radius:50%;background:#333;transition:background .05s}
+#remote .beat.on{background:var(--pink);box-shadow:0 0 8px var(--pink)}
+#remote .rmBody{padding:6px 8px 8px;overflow-y:auto}
+#remote .rmBody::-webkit-scrollbar{width:6px}#remote .rmBody::-webkit-scrollbar-thumb{background:#2d335f;border-radius:3px}
+#remote .rmScenes{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:6px}
+#remote .rmLbl{font-size:10.5px;color:var(--pink);letter-spacing:.12em;flex-basis:100%}
+#remote .rmLbl2{font-size:10.5px;color:var(--dim);margin-right:2px}
+#remote .rmGrid{display:flex;flex-direction:column;gap:5px}
+#remote .rmSec{background:rgba(255,255,255,.03);border:1px solid #262b55;border-radius:10px;padding:5px 6px 6px}
+#remote .rmSecT{font-size:10.5px;color:var(--pink);letter-spacing:.14em;margin-bottom:4px}
+#remote .rmBtns{display:flex;flex-wrap:wrap;gap:3px;align-items:center}
+#remote .rmBreak{flex-basis:100%;height:1px}
+.rb{background:#1f2450;color:#dfe3ff;border:1px solid #363d7c;border-radius:7px;padding:4px 7px;font-size:11.5px;font-family:inherit;cursor:pointer;white-space:nowrap;line-height:1.25;transition:background .12s,box-shadow .12s}
+.rb:hover{border-color:var(--mint)}
+.rb:active{transform:scale(.95)}
+.rb.on{background:linear-gradient(135deg,#2fbf9f,#4a7fe0);color:#fff;border-color:#8ff5dd;box-shadow:0 0 10px rgba(127,245,214,.5)}
+.rb.warn.on{background:linear-gradient(135deg,#d0405f,#7a2040);border-color:#ff8fa8;box-shadow:0 0 10px rgba(255,90,120,.6)}
+.rb.fx{background:linear-gradient(135deg,#9a3f86,#5d3aa0);border-color:#d68fd8}
+.rb.sw{width:29px;height:22px;padding:0;border-radius:6px}
+.rb.sw.on{outline:2px solid #fff;outline-offset:1px;box-shadow:0 0 10px rgba(255,255,255,.6)}
+.rb.play{min-width:30px}
+.rb.sm{padding:4px 6px}
+.rb.scene{max-width:88px;overflow:hidden;text-overflow:ellipsis}
+.rb.scene.last:not(.on){border-color:var(--mint);color:var(--mint)}
+.rb.add{border-style:dashed;color:var(--dim)}
+.rb.min{font-size:10.5px;color:var(--dim)}
+#pipLabel{position:absolute;left:14px;z-index:3;font-size:11px;color:#fff;background:rgba(220,40,80,.85);padding:2px 7px;border-radius:5px;pointer-events:none}
+#status{position:absolute;top:52px;left:50%;transform:translateX(-50%);background:rgba(20,24,52,.9);border:1px solid var(--mint);border-radius:8px;padding:6px 14px;opacity:0;transition:opacity .3s;z-index:4;pointer-events:none}
+#status.show{opacity:1}
+#hint{position:absolute;left:12px;top:52px;color:#aab3e6;font-size:11px;background:rgba(12,14,30,.6);padding:6px 9px;border-radius:8px;line-height:1.6;z-index:2;pointer-events:none}
+#loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--mint);background:var(--bg);z-index:10}
+/* VJ リモコン（プレビュー部分は透明にして WebGL で描くので backdrop-filter は使わない） */
+#vjRemote{position:absolute;z-index:4;width:346px;max-height:calc(100% - 62px);display:flex;flex-direction:column;border:1px solid #7a4aa8;border-radius:16px;box-shadow:0 10px 34px rgba(0,0,0,.55);user-select:none}
+#vjRemote .vjHead{display:flex;align-items:center;gap:4px;padding:7px 8px;background:rgba(30,14,46,.96);border-radius:15px 15px 0 0;cursor:grab;flex-wrap:wrap;touch-action:none;border-bottom:1px solid #4a2d6e}
+#vjRemote.min .vjHead{border-radius:15px;border-bottom:none}
+#vjRemote.min .vjMain{display:none}
+#vjRemote .vjMain{display:flex;flex:1 1 auto;min-height:0}
+#vjRemote .vjLeft{flex:0 0 344px;width:344px;display:flex;flex-direction:column;min-height:0}
+#vjRemote .vjTitle{font-size:12px;letter-spacing:.22em;color:var(--pink);font-weight:bold;margin-right:2px}
+#vjRemote .rmSep{width:1px;height:18px;background:#4a3470;margin:0 2px}
+#vjRemote .rmFill{flex:1}
+#vjRemote .bpm{font-family:monospace;font-size:14px;width:30px;text-align:center;color:var(--mint)}
+#vjRemote .beat{width:10px;height:10px;border-radius:50%;background:#333}
+#vjRemote .beat.on{background:var(--pink);box-shadow:0 0 8px var(--pink)}
+#vjRemote .vjPrev{position:relative;flex:0 0 auto;aspect-ratio:16/9;background:transparent;cursor:zoom-in;border-left:1px solid #4a2d6e;border-right:1px solid #4a2d6e}
+#vjRemote .vjPrevLbl{position:absolute;left:6px;bottom:5px;max-width:calc(100% - 12px);font-size:10px;line-height:1.35;color:#fff;background:rgba(10,6,20,.62);padding:2px 6px;border-radius:6px;pointer-events:none}
+#vjRemote .vjPrevLbl:empty{display:none}
+#vjRemote .vjPrevLbl.warn{color:#ff9fb4}
+#vjRemote .vjBody{padding:6px 8px 8px;overflow-y:auto;background:rgba(20,11,34,.96);border-radius:0 0 15px 15px;display:flex;flex-direction:column;gap:5px;min-height:0}
+#vjRemote .vjBody::-webkit-scrollbar{width:6px}#vjRemote .vjBody::-webkit-scrollbar-thumb{background:#45306a;border-radius:3px}
+#vjRemote .rmSec{background:rgba(255,255,255,.035);border:1px solid #33275a;border-radius:10px;padding:5px 6px 6px}
+#vjRemote .rmSecT{font-size:10.5px;color:var(--pink);letter-spacing:.12em;margin-bottom:4px}
+#vjRemote .rmBtns{display:flex;flex-wrap:wrap;gap:3px;align-items:center}
+#vjRemote .rmBreak{flex-basis:100%;height:1px}
+#vjRemote .rmLbl2{font-size:10.5px;color:var(--dim);margin-right:2px}
+#vjRemote .vjPads{display:grid;grid-template-columns:repeat(6,1fr);gap:4px}
+#vjRemote .rb.pad{display:flex;flex-direction:column;align-items:center;gap:1px;padding:7px 2px 5px;font-size:11px;background:linear-gradient(160deg,#3a2466,#20163f);border-color:#6a4aa8;border-radius:9px;touch-action:none}
+#vjRemote .rb.pad small{font-size:9.5px;color:#b9a6ea;font-family:monospace}
+#vjRemote .rb.pad.hit{background:linear-gradient(160deg,#ff8fd0,#8f6bff);color:#fff;box-shadow:0 0 14px rgba(255,143,208,.8)}
+#vjRemote .rb.deck{flex:0 0 92px;text-align:left;overflow:hidden;text-overflow:ellipsis;padding:6px 7px}
+#vjRemote .rb.deck b{color:var(--pink)}
+#vjRemote .rb.deck.on b{color:#fff}
+#vjRemote .vjXf{flex:1;min-width:60px;accent-color:var(--pink)}
+#vjRemote .rb.gen{min-width:46px;padding:4px 5px}
+#vjRemote .rb.gen.old:not(.on){border-color:#5a3f7c;color:#e8d8ff}
+#vjRemote .rb.fxt:not(.on){background:#2a1d4c}
+#vjRemote .rb.out{font-size:11px}
+#vjRemote .rb.preset{background:linear-gradient(135deg,#3a2466,#253064)}
+#vjRemote .rb.scene{max-width:120px;overflow:hidden;text-overflow:ellipsis}
+#vjRemote .vjVal{font-family:monospace;font-size:11.5px;min-width:30px;text-align:center;color:var(--mint)}
+#vjRemote .vjText{flex:1;min-width:120px;background:#0c0f20;color:var(--text);border:1px solid #4a3470;border-radius:6px;padding:4px 6px;font-family:inherit}
+#vjRemote .vjThumb{position:relative;width:52px;height:30px;padding:0;border:1px solid #4a3470;border-radius:5px;overflow:hidden;background:#000;cursor:pointer}
+#vjRemote .vjThumb img{width:100%;height:100%;object-fit:cover;display:block}
+#vjRemote .vjThumb.on{outline:2px solid var(--mint);outline-offset:1px}
+#vjRemote .vjThumb .x,#vjRemote .vjSlot .x{position:absolute;top:0;right:0;font-size:10px;line-height:1;padding:1px 3px;background:rgba(0,0,0,.7);color:#fff;border-radius:0 0 0 4px;cursor:pointer}
+#vjRemote .vjSlot{position:relative;display:inline-flex}
+#vjRemote .vjSlot .rb{padding-right:16px}
+#vjRemote .note{margin:2px 0 0}
+.rb.vjopen{background:linear-gradient(135deg,#7a3a9a,#3a3aa0);border-color:#d69fff}
+body.vjOpen #hint{display:none}
+/* VJ 出力モード（全画面） */
+body.vjFull #panel,body.vjFull #topbar,body.vjFull #remote,body.vjFull #pipLabel,body.vjFull #hint{display:none!important}
+body.vjFull #vjRemote .vjPrev{display:none}
+body.vjFull #vjRemote .vjBody{border-top:1px solid #4a2d6e}
+body.vjFull #vjRemote{opacity:.94}
+body.vjHideUI #vjRemote{display:none}
+body.vjFull.vjHideUI #view{cursor:none}
+body.vjFull.vjHideUI #status{display:none}
+.hide{display:none!important}
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <header>
+      <h1><span>すてーじ工房</span></h1>
+      <small>Idol Stage Kit — three.js / VRChat移植を見据えた設計</small>
+    </header>
+    <nav id="tabs"></nav>
+    <div id="tabBody"></div>
+  </aside>
+  <main id="view">
+    <div id="loading">読み込み中…（three.js をCDNから取得しています）</div>
+    <div class="hud" id="topbar">
+      <div class="grp" id="viewBtns"></div>
+      <div class="grp" id="gizmoBtns"></div>
+      <div class="sp"></div>
+      <div class="grp" id="editBtns"></div>
+    </div>
+    <div id="remote"></div>
+    <div id="vjRemote" class="hide"></div>
+    <div id="pipLabel">● CAM1 LIVE</div>
+    <div id="status"></div>
+    <div id="hint">左ドラッグ：回転　右ドラッグ：平行移動　ホイール：ズーム<br>クリック：アセット選択　W/E/R：移動/回転/拡縮<br>Delete：削除　Ctrl+D：複製　Ctrl+Z / Ctrl+Y：元に戻す/やり直し<br>Space：再生/停止　1〜9：シーン　B：暗転　H：このヘルプを隠す<br>J：VJリモコン　Z/X/C/V/N/M：VJのフラッシュ/反転/グリッチ/ズーム/ストロボ/暗転</div>
+  </main>
+</div>
+<script type="module">

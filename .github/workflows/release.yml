@@ -1,0 +1,84 @@
+# Release を作る：Unity パッケージ（.unitypackage）とブラウザ版（stage-kobo.html）を Releases に置く
+#
+# 使い方（どちらでも）
+#   ・GitHub の「Actions」→「Release を作る」→「Run workflow」（バージョンは空なら Unity の README の 1 行目から）
+#   ・タグ v0.9.0 などを push する
+# 同じバージョンをもう一度作ると、ファイルと説明を上書きします（作り直したいとき用）
+# リポジトリが Private なら、Releases を見られる・ダウンロードできるのは招待した人（Collaborators）だけです
+name: Release を作る
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "バージョン（例 0.9.0。空なら unity/…/README.md の 1 行目から）"
+        required: false
+        default: ""
+      prerelease:
+        description: "おためし版にする（Pre-release）"
+        type: boolean
+        default: false
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: バージョンを決める
+        id: ver
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          VER="${INPUT_VERSION#v}"
+          if [ -z "$VER" ] && [ "$EVENT" = "push" ]; then VER="${REF_NAME#v}"; fi
+          if [ -z "$VER" ]; then VER="$(python3 tools/release_info.py version)"; fi
+          if ! echo "$VER" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::バージョンの形がちがいます: '$VER'（0.9.0 のように数字 3 つ）"; exit 1
+          fi
+          WEB="$(python3 tools/release_info.py web)"
+          echo "ver=$VER" >> "$GITHUB_OUTPUT"
+          echo "web=$WEB" >> "$GITHUB_OUTPUT"
+          echo "インポーター v$VER ／ ブラウザ版 v$WEB"
+
+      - name: Unity パッケージを作る
+        env:
+          VER: ${{ steps.ver.outputs.ver }}
+        run: |
+          mkdir -p dist
+          python3 tools/make_unitypackage.py "dist/StageKobo_Importer_v${VER}.unitypackage"
+          cp web/stage-kobo.html dist/stage-kobo.html
+          python3 tools/release_info.py notes "$VER" > dist/notes.md
+          ls -la dist
+
+      - name: Release に置く
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ steps.ver.outputs.ver }}
+          WEB: ${{ steps.ver.outputs.web }}
+          PRE: ${{ inputs.prerelease }}
+        run: |
+          TAG="v${VER}"
+          FILES=("dist/StageKobo_Importer_v${VER}.unitypackage" "dist/stage-kobo.html")
+          if [ "$PRE" = "true" ]; then PRE=true; else PRE=false; fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "$TAG はもうあるので、ファイルと説明を上書きします"
+            gh release upload "$TAG" "${FILES[@]}" --clobber
+            gh release edit "$TAG" --title "すてーじ工房 v${VER}" --notes-file dist/notes.md --prerelease="$PRE"
+          else
+            gh release create "$TAG" "${FILES[@]}" --target "$GITHUB_SHA" \
+              --title "すてーじ工房 v${VER}" --notes-file dist/notes.md --prerelease="$PRE"
+          fi
+          echo "### できました：$TAG" >> "$GITHUB_STEP_SUMMARY"
+          echo "インポーター v${VER} ／ ブラウザ版 v${WEB}" >> "$GITHUB_STEP_SUMMARY"

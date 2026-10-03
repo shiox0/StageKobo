@@ -1,0 +1,12 @@
+# 改行コードは Git におまかせ（Windows でも Mac でも同じ中身）
+* text=auto
+# スクリプトは LF のまま（Windows の改行が入ると動かない）
+*.sh   text eol=lf
+*.py   text eol=lf
+*.mjs  text eol=lf
+*.yml  text eol=lf
+# 画像・パッケージは文字として扱わない
+*.png binary
+*.jpg binary
+*.glb binary
+*.unitypackage binary

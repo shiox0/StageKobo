@@ -1,0 +1,90 @@
+# Webページを公開：ブラウザ版（web/stage-kobo.html）を GitHub Pages に置く
+#
+# はじめに：Settings → Pages → Build and deployment → Source を「GitHub Actions」にして、
+#           Actions →「Webページを公開」→「Run workflow」（くわしくは SETUP.md）
+# そのあとは、web/stage-kobo.html を更新して push すると自動で公開し直します
+#
+# パスワードをかけたいとき（ふだんは不要）：Settings → Secrets and variables → Actions → Secrets に PAGE_PASSWORD を入れる
+#   → 中身を暗号化して、パスワードを入れた人だけが開けるページにします。消せば普通の公開に戻ります
+name: Webページを公開
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "web/stage-kobo.html"
+      - "web/page/**"
+      - ".github/workflows/pages.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Pages の設定を確かめる
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if out="$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq .build_type 2>&1)"; then
+            if [ "$out" = "workflow" ]; then
+              echo "ok=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "::warning::Settings → Pages → Source が「GitHub Actions」になっていません（いまは $out）。変えてから、Actions →「Webページを公開」→「Run workflow」"
+              echo "ok=false" >> "$GITHUB_OUTPUT"
+            fi
+          elif echo "$out" | grep -q "404"; then
+            echo "::notice::Pages がまだオンになっていないので、今回は公開しませんでした。Settings → Pages → Source を「GitHub Actions」にして、Actions →「Webページを公開」→「Run workflow」"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Pages の設定を確かめられませんでした（$out）。このまま公開してみます"
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v6
+        if: steps.check.outputs.ok == 'true'
+
+      - uses: actions/setup-node@v6
+        if: steps.check.outputs.ok == 'true'
+        with:
+          node-version: 24
+
+      - name: ページを用意する
+        if: steps.check.outputs.ok == 'true'
+        env:
+          PAGE_PASSWORD: ${{ secrets.PAGE_PASSWORD }}
+          PAGE_SALT: ${{ github.repository }}
+        run: |
+          mkdir -p _site
+          if [ -n "$PAGE_PASSWORD" ]; then
+            echo "パスワードをかけて公開します"
+            node web/page/lock.mjs web/stage-kobo.html _site/index.html
+          else
+            echo "そのまま公開します（パスワードなし）"
+            cp web/stage-kobo.html _site/index.html
+          fi
+
+      - uses: actions/configure-pages@v6
+        if: steps.check.outputs.ok == 'true'
+
+      - uses: actions/upload-pages-artifact@v5
+        if: steps.check.outputs.ok == 'true'
+        with:
+          path: _site
+
+      - name: 公開する
+        id: deployment
+        if: steps.check.outputs.ok == 'true'
+        uses: actions/deploy-pages@v5

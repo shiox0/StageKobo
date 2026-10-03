@@ -1,0 +1,294 @@
+{
+ "app": "0.8.0",
+ "vjDefs": {
+  "gens": [
+   "tunnel",
+   "rings",
+   "rays",
+   "synth",
+   "polys",
+   "lissa",
+   "spiral",
+   "plasma",
+   "checker",
+   "halftone",
+   "hex",
+   "stripes",
+   "warp",
+   "hearts",
+   "eq",
+   "crystal",
+   "p_triangles",
+   "p_stripes",
+   "p_galaxy",
+   "p_tunnel",
+   "p_blobs",
+   "p_dots",
+   "p_sparkle",
+   "image",
+   "text",
+   "black"
+  ],
+  "gensShort": [
+   "トンネル",
+   "同心円",
+   "放射",
+   "シンセ",
+   "ポリゴン",
+   "リサージュ",
+   "うず",
+   "プラズマ",
+   "市松",
+   "ドット波",
+   "ハニカム",
+   "ストライプ",
+   "ワープ",
+   "ハート",
+   "EQ",
+   "セル",
+   "三角",
+   "パステル",
+   "銀河",
+   "三角筒",
+   "ゆめかわ",
+   "ポップ",
+   "キラキラ",
+   "画像",
+   "文字",
+   "黒"
+  ],
+  "gensFull": [
+   "多角形トンネル",
+   "同心円パルス",
+   "サンバースト",
+   "シンセグリッド",
+   "回転ポリゴン",
+   "リサージュ曲線",
+   "スパイラル",
+   "プラズマ",
+   "パタパタ市松",
+   "ドットの波",
+   "ハニカム",
+   "ストライプ",
+   "ワープ（星が飛ぶ）",
+   "ハートシャワー",
+   "イコライザー",
+   "クリスタル（セル）",
+   "三角コンフェッティ",
+   "パステル虹",
+   "銀河・星雲",
+   "三角トンネル",
+   "ゆめかわ流体",
+   "ポップドット",
+   "キラキラ星",
+   "画像（画像バンクから）",
+   "文字",
+   "黒（何も出さない）"
+  ],
+  "fx": [
+   "zoom",
+   "flash",
+   "rgb",
+   "glitch",
+   "kaleido",
+   "shake",
+   "rotate",
+   "feedback",
+   "pixel",
+   "invert",
+   "posterize",
+   "edge",
+   "scan"
+  ],
+  "fxNames": [
+   "ズーム",
+   "フラッシュ",
+   "RGBずれ",
+   "グリッチ",
+   "万華鏡",
+   "揺れ",
+   "回転",
+   "残像",
+   "モザイク",
+   "反転",
+   "ポスター",
+   "ネオン輪郭",
+   "走査線"
+  ],
+  "colorModes": [
+   "raw",
+   "grad",
+   "duo",
+   "mono"
+  ],
+  "colorModeNames": [
+   "そのまま",
+   "グラデ",
+   "2色",
+   "白黒"
+  ],
+  "mirrors": [
+   "なし",
+   "左右",
+   "上下",
+   "4分割"
+  ],
+  "presets": [
+   {
+    "name": "ネオントンネル",
+    "a": {
+     "gen": "tunnel",
+     "count": 6
+    },
+    "b": {
+     "gen": "rings"
+    },
+    "pal": 2,
+    "colorMode": "raw",
+    "fx": {
+     "zoom": true,
+     "rgb": true
+    }
+   },
+   {
+    "name": "万華鏡ポップ",
+    "a": {
+     "gen": "p_triangles"
+    },
+    "b": {
+     "gen": "plasma"
+    },
+    "pal": 1,
+    "colorMode": "raw",
+    "fx": {
+     "kaleido": true,
+     "zoom": true,
+     "flash": true
+    },
+    "kaleN": 6
+   },
+   {
+    "name": "シンセウェーブ",
+    "a": {
+     "gen": "synth"
+    },
+    "b": {
+     "gen": "warp"
+    },
+    "pal": 4,
+    "colorMode": "raw",
+    "fx": {
+     "scan": true,
+     "rgb": true,
+     "zoom": true
+    }
+   },
+   {
+    "name": "モノクロ・ストロボ",
+    "a": {
+     "gen": "checker",
+     "count": 4
+    },
+    "b": {
+     "gen": "polys",
+     "count": 4
+    },
+    "pal": 0,
+    "colorMode": "mono",
+    "fx": {
+     "flash": true,
+     "invert": true,
+     "zoom": true
+    }
+   },
+   {
+    "name": "ゆめかわ",
+    "a": {
+     "gen": "p_blobs"
+    },
+    "b": {
+     "gen": "hearts"
+    },
+    "pal": 1,
+    "colorMode": "raw",
+    "fx": {
+     "feedback": true,
+     "zoom": true
+    },
+    "mirror": 1
+   },
+   {
+    "name": "ハニカム・グリッチ",
+    "a": {
+     "gen": "hex",
+     "count": 5
+    },
+    "b": {
+     "gen": "crystal"
+    },
+    "pal": 5,
+    "colorMode": "raw",
+    "fx": {
+     "glitch": true,
+     "rgb": true,
+     "zoom": true
+    }
+   },
+   {
+    "name": "ワープ・トリップ",
+    "a": {
+     "gen": "warp"
+    },
+    "b": {
+     "gen": "spiral",
+     "count": 3
+    },
+    "pal": 3,
+    "colorMode": "raw",
+    "fx": {
+     "feedback": true,
+     "rotate": true,
+     "zoom": true
+    }
+   },
+   {
+    "name": "画像ドゥンドゥン",
+    "a": {
+     "gen": "image"
+    },
+    "b": {
+     "gen": "image",
+     "img": 1
+    },
+    "pal": -1,
+    "colorMode": "raw",
+    "fx": {
+     "zoom": true,
+     "rgb": true,
+     "glitch": true,
+     "flash": true
+    },
+    "imgRate": 1
+   }
+  ],
+  "images": [],
+  "textAsp": 2.046875
+ },
+ "hasState": true,
+ "imgKeys": [
+  "vjtext"
+ ],
+ "lights": {
+  "monitorMode": "live"
+ },
+ "slots": [
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null
+ ]
+}

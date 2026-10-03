@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="referrer" content="no-referrer">
+<title>すてーじ工房</title>
+<style>
+:root{--bg:#0b0d1a;--panel:#11142a;--line:#2b3160;--text:#e9ecff;--dim:#9aa3d6;--mint:#7ff5d6;--pink:#ff8fd0;--sky:#8fd3ff;--danger:#ff8aa5}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+  font-family:"Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic UI","Meiryo",system-ui,sans-serif}
+body{display:flex;align-items:center;justify-content:center;padding:16px}
+.card{width:100%;max-width:380px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:28px 24px 22px;box-shadow:0 10px 40px rgba(0,0,0,.45)}
+h1{margin:0 0 4px;font-size:22px;letter-spacing:.06em}
+h1 span{background:linear-gradient(90deg,var(--mint),var(--sky),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent}
+p{margin:0 0 18px;color:var(--dim);font-size:13px;line-height:1.7}
+label.pw{display:block;font-size:12px;color:var(--dim);margin-bottom:6px}
+input[type=password]{width:100%;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#0d1024;color:var(--text);outline:none}
+input[type=password]:focus{border-color:var(--sky)}
+.row{display:flex;align-items:center;gap:8px;margin:12px 0 16px;font-size:13px;color:var(--dim)}
+button{width:100%;font-size:15px;font-family:inherit;padding:11px;border:0;border-radius:10px;cursor:pointer;color:#0b0d1a;font-weight:bold;
+  background:linear-gradient(135deg,var(--mint),var(--sky))}
+button:disabled{opacity:.6;cursor:wait}
+.msg{min-height:1.5em;margin-top:12px;font-size:13px;color:var(--danger)}
+.note{margin-top:14px;font-size:11px;color:#6f78ad;line-height:1.6}
+noscript{color:var(--danger)}
+</style>
+</head>
+<body>
+<main class="card">
+  <h1><span>すてーじ工房</span></h1>
+  <p>パスワードが必要なページです。<br>作者から聞いたパスワードを入れてください。</p>
+  <noscript><p>JavaScript をオンにしてください。</p></noscript>
+  <form id="f" autocomplete="on">
+    <input type="text" name="username" value="stagekobo" autocomplete="username" hidden>
+    <label class="pw" for="pw">パスワード</label>
+    <input id="pw" type="password" autocomplete="current-password" required autofocus>
+    <label class="row"><input id="keep" type="checkbox" checked> この端末で覚えておく（次からは入れなくてOK）</label>
+    <button id="go" type="submit">ひらく</button>
+    <div class="msg" id="msg" role="alert"></div>
+  </form>
+  <div class="note">パスワードは、ほかの人に教えたり SNS に載せたりしないでください。</div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // ---- 鍵をかけた中身（web/page/lock.mjs が入れる）
+  var ITER = __ITER__;
+  var SALT = "__SALT__";
+  var IV = "__IV__";
+  var DATA = "__DATA__";
+  var STORE = "stagekobo.pageKey";
+
+  var $ = function (id) { return document.getElementById(id); };
+  function b64(s) { var bin = atob(s), a = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a; }
+  function toB64(buf) { var a = new Uint8Array(buf), s = ""; for (var i = 0; i < a.length; i++) s += String.fromCharCode(a[i]); return btoa(s); }
+  function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function save(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
+
+  if (!window.crypto || !crypto.subtle) {
+    $("msg").textContent = "このブラウザでは開けません（Chrome・Edge・Firefox・Safari の新しいものを使ってください）";
+    $("go").disabled = true;
+    return;
+  }
+
+  function derive(pw) {
+    return crypto.subtle.importKey("raw", new TextEncoder().encode(pw.normalize ? pw.normalize("NFC") : pw), "PBKDF2", false, ["deriveBits"])
+      .then(function (base) { return crypto.subtle.deriveBits({ name: "PBKDF2", salt: b64(SALT), iterations: ITER, hash: "SHA-256" }, base, 256); });
+  }
+  function open(raw) {
+    return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["decrypt"])
+      .then(function (key) { return crypto.subtle.decrypt({ name: "AES-GCM", iv: b64(IV) }, key, b64(DATA)); })
+      .then(function (plain) { return new TextDecoder().decode(plain); });
+  }
+  function show(html) {
+    // 読み込みの途中（覚えた鍵ですぐ開くとき）に入れ替えると無視されるので、読み込みが終わってから
+    if (document.readyState !== "complete") { window.addEventListener("load", function () { show(html); }, { once: true }); return; }
+    // 中身のページに入れ替える（アドレスはそのまま。ページの保存データ＝localStorage も同じ場所）
+    document.open();
+    document.write(html);
+    document.close();
+  }
+
+  // 前に「覚えておく」にしていたら、そのまま開く
+  var kept = load(STORE);
+  if (kept) {
+    $("go").disabled = true; $("go").textContent = "ひらいています…";
+    open(b64(kept)).then(show, function () {
+      save(STORE, null);   // パスワードが変わった → もう一度入れてもらう
+      $("go").disabled = false; $("go").textContent = "ひらく";
+      $("msg").textContent = "パスワードが変わりました。新しいパスワードを入れてください";
+    });
+  }
+
+  $("f").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var pw = $("pw").value;
+    if (!pw) return;
+    $("go").disabled = true; $("go").textContent = "ひらいています…"; $("msg").textContent = "";
+    derive(pw).then(function (raw) {
+      return open(raw).then(function (html) {
+        save(STORE, $("keep").checked ? toB64(raw) : null);
+        show(html);
+      });
+    }).catch(function () {
+      $("go").disabled = false; $("go").textContent = "ひらく";
+      $("msg").textContent = "パスワードがちがいます";
+      $("pw").select();
+    });
+  });
+})();
+</script>
+</body>
+</html>

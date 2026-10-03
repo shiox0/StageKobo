@@ -1,0 +1,15 @@
+# 作ったもの（Actions が毎回作るので入れない）
+dist/
+_site/
+*.unitypackage
+
+# ステージのデータ（GLB・Unity用JSON）は作品なので入れない
+*.glb
+*.unity.json
+
+# パソコンが勝手に作るもの
+node_modules/
+.DS_Store
+Thumbs.db
+desktop.ini
+__pycache__/
