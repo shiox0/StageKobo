@@ -63,7 +63,7 @@ namespace Washitsu.StageKobo.Editor
                 }
             }
             // ---- パレット（色ボタン）：照明のほか、ペンライト・客席のふち・奥のウォッシュも同じ色になる
-            if (colorFx.Count > 0 || ctx.paletteExtra.Count > 0)
+            if (colorFx.Count > 0 || ctx.paletteExtra.Count > 0 || ctx.stageLights.Count > 0)
             {
                 var sm2 = AddLayer(ctrl, "Palette", ref first, out li);
                 var ch = Chan(ctx, SKCh.PALETTE, 0, li, 0.25f);
@@ -106,7 +106,7 @@ namespace Washitsu.StageKobo.Editor
             foreach (var f in ctx.fixtures) { if (f.beamR != null && f.kind != "pin") masterR.Add(f.beamR); if (f.lensR != null && f.kind != "pin") masterR.Add(f.lensR); masterR.AddRange(f.laserR); masterR.AddRange(f.cellR); }
             if (ctx.washBack != null) masterR.Add(ctx.washBack);
             masterR.AddRange(ctx.spotBeams);   // 演者を照らすスポットの見た目のビーム（ライト本体の明るさも下で一緒に）
-            if (masterR.Count > 0 || ctx.spotLights.Count > 0)
+            if (masterR.Count > 0 || ctx.spotLights.Count > 0 || ctx.stageLights.Count > 0)
             {
                 var sm = AddLayer(ctrl, "Master", ref first, out li);
                 var ch = Chan(ctx, SKCh.MASTER, 0, li, 0.15f);
@@ -118,7 +118,7 @@ namespace Washitsu.StageKobo.Editor
                 {
                     var c = s.state.motion as AnimationClip;
                     if (c == null) continue;
-                    foreach (var L in ctx.spotLights)
+                    foreach (var L in ctx.spotLights.Concat(ctx.stageLights))
                     {
                         if (L == null) continue;
                         AnimationCurve cv;
@@ -133,20 +133,35 @@ namespace Washitsu.StageKobo.Editor
                 back.hasExitTime = true; back.exitTime = 1f; back.duration = 0f; back.hasFixedDuration = true;
                 sm.defaultState = on;
             }
-            // ---- モニター（ライブ映像 / VJ映像）：メイン（Monitor_～）とサブ（Monitor2_～）を別々に切り替える
-            // VJ を組み立てたとき：カメラ映像（_Src 0）のまま、_VJ で VJ の映像に切り替える。無いとき：VJ パターン（_Src 1）
-            string prop = ctx.vj != null ? "_VJ" : "_Src";
-            for (int g = 0; g < 2; g++)
+            // ---- モニター：メイン（Monitor_～）・サブ右（Monitor2_～）・サブ左（Monitor3_～）を別々に、カメラ1・カメラ2・VJ・映像（LED の _Sel 0〜3）
+            bool hasVideo = ctx.cfg.video && SKAudio.YamaInstalled;
+            for (int g = 0; g < 3; g++)
             {
-                var rs = g == 0 ? ctx.camMonitors : ctx.camMonitors2;
+                var rs = g == 0 ? ctx.camMonitors : g == 1 ? ctx.camMonitors2 : ctx.camMonitors3;
                 if (rs.Count == 0) continue;
-                string pre = g == 0 ? "Monitor" : "Monitor2";
+                string pre = g == 0 ? "Monitor" : g == 1 ? "Monitor2" : "Monitor3";
                 var sm = AddLayer(ctrl, pre, ref first, out li);
-                var ch = Chan(ctx, g == 0 ? SKCh.MONITOR : SKCh.MONITOR2, 0, li, 0f);
-                var a = AddState(ctrl, sm, pre + "_Live", ConstRendererClip(ctx, pre + "_Live", rs, prop, 0f), 0f, 0, ch, SKCh.MODE_CONST, null);
-                var b = AddState(ctrl, sm, pre + "_VJ", ConstRendererClip(ctx, pre + "_VJ", rs, prop, 1f), 0f, 1, ch, SKCh.MODE_CONST, null);
-                bool vj = SKBuilder.MonitorMode(ctx, g == 1) == "vj";
-                sm.defaultState = vj ? b : a; ch.def = vj ? 1 : 0;
+                var ch = Chan(ctx, g == 0 ? SKCh.MONITOR : g == 1 ? SKCh.MONITOR2 : SKCh.MONITOR3, 0, li, 0f);
+                var opts = new List<KeyValuePair<string, float>> { new KeyValuePair<string, float>("Cam1", 0f) };
+                if (ctx.camRT[1] != null) opts.Add(new KeyValuePair<string, float>("Cam2", 1f));
+                if (ctx.vj != null) opts.Add(new KeyValuePair<string, float>("VJ", 2f));
+                if (hasVideo) opts.Add(new KeyValuePair<string, float>("Video", 3f));
+                float def = rs[0] != null && rs[0].sharedMaterial != null && rs[0].sharedMaterial.HasProperty("_Sel") ? rs[0].sharedMaterial.GetFloat("_Sel") : 0f;
+                for (int k = 0; k < opts.Count; k++)
+                {
+                    var st = AddState(ctrl, sm, pre + "_" + opts[k].Key, ConstRendererClip(ctx, pre + "_" + opts[k].Key, rs, "_Sel", opts[k].Value), 0f, k, ch, SKCh.MODE_CONST, null);
+                    if (k == 0 || Mathf.Approximately(opts[k].Value, def)) { sm.defaultState = st; ch.def = k; }
+                }
+            }
+            // ---- 背景の LED：いつもの（模様・VJ）／映像
+            var backR = ctx.leds.Where(l => l.backdrop && l.r != null).Select(l => l.r).ToList();
+            if (hasVideo && backR.Count > 0)
+            {
+                var sm = AddLayer(ctrl, "Backdrop", ref first, out li);
+                var ch = Chan(ctx, SKCh.BACKDROP, 0, li, 0f);
+                var a0 = AddState(ctrl, sm, "Back_Normal", ConstRendererClip(ctx, "Back_Normal", backR, "_Sel", -1f), 0f, 0, ch, SKCh.MODE_CONST, null);
+                AddState(ctrl, sm, "Back_Video", ConstRendererClip(ctx, "Back_Video", backR, "_Sel", 3f), 0f, 1, ch, SKCh.MODE_CONST, null);
+                sm.defaultState = a0; ch.def = 0;
             }
             // ---- カラーウォッシュ（ON/OFF）
             if (ctx.washR.Count > 0)
@@ -471,6 +486,17 @@ namespace Washitsu.StageKobo.Editor
                     clip.SetCurve(path, r.GetType(), prop + ".g", Const(cs[k].g, 1));
                     clip.SetCurve(path, r.GetType(), prop + ".b", Const(cs[k].b, 1));
                 }
+            }
+            // ステージを照らす本物のライト：i 番は照明の色の (i % 3) 番目
+            for (int i = 0; i < ctx.stageLights.Count; i++)
+            {
+                var L = ctx.stageLights[i];
+                if (L == null) continue;
+                var c = cs[i % 3];
+                string lp = P(ctx, L.transform);
+                clip.SetCurve(lp, typeof(Light), "m_Color.r", Const(c.r, 1));
+                clip.SetCurve(lp, typeof(Light), "m_Color.g", Const(c.g, 1));
+                clip.SetCurve(lp, typeof(Light), "m_Color.b", Const(c.b, 1));
             }
             return SaveClip(ctx, clip, true);
         }

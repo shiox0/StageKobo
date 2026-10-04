@@ -617,6 +617,7 @@ namespace Washitsu.StageKobo
                     if (uiMarks[i].activeSelf != on) uiMarks[i].SetActive(on);
                 }
             RefreshInfo();
+            if (main != null) main.RefreshPanel();   // 背景 LED のボタン（操作パネルのモニターのタブ）の印・上の文字
         }
 
         string NameOf(string[] names, int i, string fallback)

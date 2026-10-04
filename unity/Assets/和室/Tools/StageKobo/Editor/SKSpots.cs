@@ -83,6 +83,47 @@ namespace Washitsu.StageKobo.Editor
                 (ctx.udon ? "。操作パネルの「特効・カメラ」タブの「自分→スポット1／2」で、押した人を追います" : "（ステージに固定）"));
         }
 
+        /// <summary>
+        /// ステージを照らす本物のライト（照明の色）。ステージの手前の上から、左右 2 灯でステージ全体を広く照らす（演者が照明の色に染まる）。
+        /// 色は照明の「色（パレット）」に合わせて左 = 1 色目・右 = 2 色目（Animator の Palette レイヤー）、明るさは「照明ぜんぶ」（点灯・暗転・ストロボ）に従う。
+        /// 音（AudioLink）・動き・色の付け方（虹など）には合わせない（本物のライトは Udon で動かすと重いため）
+        /// </summary>
+        public static void BuildStageLights(SKContext ctx)
+        {
+            if (!ctx.cfg.stageLight) return;
+            var st = J.O(ctx.state, "stage");
+            float W = J.F(st, "width", 16f), D = J.F(st, "depth", 8f), H = J.F(st, "height", 1.2f);
+            float power = Mathf.Clamp(ctx.cfg.stageLightPower, 0.1f, 3f);
+            var holder = new GameObject("StageLights（ステージを照らすライト）");
+            holder.transform.SetParent(ctx.root.transform, false);
+            var cols = new[] { J.Col(ctx.live.c1, Color.white), J.Col(ctx.live.c2, Color.white) };
+            for (int k = 0; k < 2; k++)
+            {
+                float sx = k == 0 ? -1f : 1f;
+                var fromT = new Vector3(sx * W * 0.3f, H + 6.5f, D / 2f + 2.5f);
+                var aimT = new Vector3(sx * W * 0.15f, H + 0.8f, -D * 0.05f);
+                Vector3 from = ctx.ToWorld(fromT), aim = ctx.ToWorld(aimT);
+                float dist = Mathf.Max(2f, Vector3.Distance(from, aim));
+                var go = new GameObject("StageLight" + (k == 0 ? "_L" : "_R"));
+                go.transform.SetParent(holder.transform, true);
+                go.transform.position = from;
+                go.transform.rotation = Quaternion.LookRotation(aim - from, Vector3.up);
+                var L = go.AddComponent<Light>();
+                L.type = LightType.Spot;
+                L.color = cols[k];
+                L.intensity = 2.6f * power;
+                L.range = dist * 2.5f;
+                L.spotAngle = Mathf.Clamp(2f * Mathf.Atan(Mathf.Max(W * 0.45f, D * 0.6f) / dist) * Mathf.Rad2Deg, 40f, 100f);
+                L.shadows = LightShadows.None;
+                L.renderMode = LightRenderMode.ForcePixel;
+                L.bounceIntensity = 0f;
+                L.lightmapBakeType = LightmapBakeType.Realtime;
+                ctx.stageLights.Add(L);
+            }
+            ctx.Log("ステージを照らすライト 2 灯（本物のライト・照明の色）を置きました。色は「色（パレット）」、明るさは「照明ぜんぶ」の点灯・暗転・ストロボに合わせて変わります" +
+                (ctx.cfg.spots ? "（スポット 2 灯と合わせて本物のライト 4 灯。Quest で重いときはどちらかを外して組み立ててください）" : ""));
+        }
+
         /// <summary>距離 d のところで半径 r の丸を照らす角度（度）</summary>
         public static float SpotAngle(float d, float r)
         {

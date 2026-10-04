@@ -17,7 +17,8 @@ namespace Washitsu.StageKobo.Editor
         SKAxisMode axis = SKAxisMode.Auto;
         bool led = true, cams = true, beams = true, anim = true, fx = true, remote = true, colliders = true, glitter = true, pinLight = true;
         bool wash = true, crowd = true, performers = true, udon = true, probe = true, vj = true, desks = true;
-        bool audioLink = true, yama = true, spots = true, yamaSound = true;
+        bool audioLink = true, yama = true, spots = true, yamaSound = true, video = true, stageLight = true;
+        float stageLightPower = 1f;
         float alAmount = 0.7f, spotPower = 1f;
         // シーンの AudioLink・YamaPlayer（表示用。毎回探すと重いので1秒ごと）
         int sceneAL, sceneYama, sceneYamaLinked;
@@ -61,6 +62,10 @@ namespace Washitsu.StageKobo.Editor
                 "ふだんはステージに固定。UdonSharp 版は操作パネルの「自分→スポット1／2」で、押した人を追います"), spots);
             using (new EditorGUI.DisabledScope(!spots))
                 spotPower = EditorGUILayout.Slider(new GUIContent("    スポットの明るさ", "1 = ふつう。ステージの LED に負けて暗く見えるときは上げる（あとから変えるときは組み立て直し。明るさは「照明ぜんぶ」の点灯・暗転で Animator が決めるため）"), spotPower, 0.3f, 2.5f);
+            stageLight = EditorGUILayout.ToggleLeft(new GUIContent("ステージを照らすライト（本物のライト 2 灯・照明の色）",
+                "ステージの手前の上から、左右 2 灯で演者を照明の色に染めます。色は「色（パレット）」、明るさは「照明ぜんぶ」の点灯・暗転・ストロボに合わせて変わります（重いので Quest では外してもOK）"), stageLight);
+            using (new EditorGUI.DisabledScope(!stageLight))
+                stageLightPower = EditorGUILayout.Slider(new GUIContent("    ステージのライトの明るさ", "1 = ふつう（あとから変えるときは組み立て直し）"), stageLightPower, 0.2f, 2.5f);
             wash = EditorGUILayout.ToggleLeft("カラーウォッシュ（舞台の床を照明の色で照らす・軽い）", wash);
             crowd = EditorGUILayout.ToggleLeft("客席の人・ペンライトを拍に合わせて動かす（シェーダー）", crowd);
             performers = EditorGUILayout.ToggleLeft("演者ダミーを踊らせる", performers);
@@ -218,12 +223,20 @@ namespace Washitsu.StageKobo.Editor
                     "YamaPlayer の音の出口をステージ（スピーカーのアセットがあればそのまん中）に動かして、会場のどこでも聞こえる距離にします（会場の大きさから自動。YamaPlayer の音量・ミュートはそのまま使えます）"), yamaSound && yamaOk);
                 if (yamaOk) yamaSound = v;
             }
-            if (yamaOk && yamaSound && sceneYama > 0)
+            using (new EditorGUI.DisabledScope(!yamaOk))
             {
-                if (GUILayout.Button(new GUIContent("YamaPlayer の音を会場に広げる（ステージは作り直さない）", "あとから YamaPlayer を置いた・動かしたときに押します")))
+                bool v = EditorGUILayout.ToggleLeft(new GUIContent("YamaPlayer の映像をモニター・背景の LED に映せるようにする（操作パネルで「映像」を選ぶ）",
+                    "YamaPlayer の画面（スクリーン）に、ステージの LED のマテリアルを足します。映すかどうかは操作パネルの「モニター・カメラ」タブで選びます"), video && yamaOk);
+                if (yamaOk) video = v;
+            }
+            if (yamaOk && (yamaSound || video) && sceneYama > 0)
+            {
+                if (GUILayout.Button(new GUIContent("YamaPlayer をステージにつなぐ（音の範囲・映像。ステージは作り直さない）", "あとから YamaPlayer を置いた・動かしたときに押します")))
                 {
                     var sb = new System.Text.StringBuilder();
-                    SKAudio.SpreadSound(x => sb.AppendLine(x), SKAudio.FindStageRoot());
+                    var root = SKAudio.FindStageRoot();
+                    SKAudio.SpreadSound(x => sb.AppendLine(x), root);
+                    if (video) SKAudio.LinkVideo(x => sb.AppendLine(x), SKAudio.VideoMaterials(root));
                     soundLog = sb.ToString().TrimEnd();
                     Debug.Log("[すてーじ工房]\n" + soundLog);
                 }
@@ -266,7 +279,7 @@ namespace Washitsu.StageKobo.Editor
                 glb = glb, json = json, outFolder = outFolder, axis = axis,
                 led = led, cams = cams, beams = beams, anim = anim, fx = fx, remote = remote, colliders = colliders, glitter = glitter, pinLight = pinLight,
                 wash = wash, crowd = crowd, performers = performers, udon = udon, probe = probe, vj = vj, desks = desks,
-                audioLink = audioLink, alAmount = alAmount, yama = yama, yamaSound = yamaSound, spots = spots, spotPower = spotPower,
+                audioLink = audioLink, alAmount = alAmount, yama = yama, yamaSound = yamaSound, video = video, stageLight = stageLight, stageLightPower = stageLightPower, spots = spots, spotPower = spotPower,
             };
         }
 
@@ -302,7 +315,8 @@ namespace Washitsu.StageKobo.Editor
             public int axis;
             public bool led = true, cams = true, beams = true, anim = true, fx = true, remote = true, colliders = true, glitter = true, pinLight = true;
             public bool wash = true, crowd = true, performers = true, udon = true, probe = true, vj = true, desks = true;
-            public bool audioLink = true, yama = true, spots = true, yamaSound = true;
+            public bool audioLink = true, yama = true, spots = true, yamaSound = true, video = true, stageLight = true;
+            public float stageLightPower = 1f;
             public float alAmount = 0.7f, spotPower = 1f;
         }
 
@@ -315,7 +329,7 @@ namespace Washitsu.StageKobo.Editor
                 glbPath = c.glb != null ? AssetDatabase.GetAssetPath(c.glb) : null, jsonPath = c.json != null ? AssetDatabase.GetAssetPath(c.json) : null, outFolder = c.outFolder, axis = (int)c.axis,
                 led = c.led, cams = c.cams, beams = c.beams, anim = c.anim, fx = c.fx, remote = c.remote, colliders = c.colliders, glitter = c.glitter, pinLight = c.pinLight,
                 wash = c.wash, crowd = c.crowd, performers = c.performers, udon = c.udon, probe = c.probe, vj = c.vj, desks = c.desks,
-                audioLink = c.audioLink, yama = c.yama, yamaSound = c.yamaSound, spots = c.spots, alAmount = c.alAmount, spotPower = c.spotPower,
+                audioLink = c.audioLink, yama = c.yama, yamaSound = c.yamaSound, video = c.video, stageLight = c.stageLight, stageLightPower = c.stageLightPower, spots = c.spots, alAmount = c.alAmount, spotPower = c.spotPower,
             };
             EditorPrefs.SetString(PrefKey, JsonUtility.ToJson(s));
         }
@@ -335,7 +349,7 @@ namespace Washitsu.StageKobo.Editor
                 outFolder = string.IsNullOrEmpty(s.outFolder) ? "Assets/和室/StageKobo_Generated" : s.outFolder, axis = (SKAxisMode)s.axis,
                 led = s.led, cams = s.cams, beams = s.beams, anim = s.anim, fx = s.fx, remote = s.remote, colliders = s.colliders, glitter = s.glitter, pinLight = s.pinLight,
                 wash = s.wash, crowd = s.crowd, performers = s.performers, udon = s.udon, probe = s.probe, vj = s.vj, desks = s.desks,
-                audioLink = s.audioLink, yama = s.yama, yamaSound = s.yamaSound, spots = s.spots, alAmount = s.alAmount, spotPower = s.spotPower,
+                audioLink = s.audioLink, yama = s.yama, yamaSound = s.yamaSound, video = s.video, stageLight = s.stageLight, stageLightPower = s.stageLightPower, spots = s.spots, alAmount = s.alAmount, spotPower = s.spotPower,
             };
         }
 
@@ -347,7 +361,7 @@ namespace Washitsu.StageKobo.Editor
             glb = c.glb; glbAsset = c.glb; glbPath = c.glb != null ? AssetDatabase.GetAssetPath(c.glb) : null; json = c.json; outFolder = c.outFolder; axis = c.axis;
             led = c.led; cams = c.cams; beams = c.beams; anim = c.anim; fx = c.fx; remote = c.remote; colliders = c.colliders; glitter = c.glitter; pinLight = c.pinLight;
             wash = c.wash; crowd = c.crowd; performers = c.performers; udon = c.udon; probe = c.probe; vj = c.vj; desks = c.desks;
-            audioLink = c.audioLink; yama = c.yama; yamaSound = c.yamaSound; spots = c.spots; alAmount = c.alAmount; spotPower = c.spotPower;
+            audioLink = c.audioLink; yama = c.yama; yamaSound = c.yamaSound; video = c.video; stageLight = c.stageLight; stageLightPower = c.stageLightPower; spots = c.spots; alAmount = c.alAmount; spotPower = c.spotPower;
         }
 
         /// <summary>前回と同じ設定で組み立て直す（特効の設定ウィンドウの「反映」から）。null = 前回の設定が無い</summary>

@@ -63,6 +63,15 @@ namespace Washitsu.StageKobo.Editor
         public static void Setup(SKContext ctx)
         {
             var cfg = ctx.cfg;
+            if (cfg.video && YamaInstalled && ctx.videoMats.Count > 0)
+            {
+                try { LinkVideo(ctx.Log, ctx.videoMats); }
+                catch (Exception e)
+                {
+                    ctx.Log("⚠ YamaPlayer の映像の設定でエラー：" + e.Message + "（インポーターの「YamaPlayer をステージにつなぐ」でやり直せます）");
+                    Debug.LogException(e);
+                }
+            }
             if (cfg.yamaSound && YamaInstalled)
             {
                 try { SpreadSound(ctx.Log, ctx.root); }
@@ -345,6 +354,79 @@ namespace Washitsu.StageKobo.Editor
             log("YamaPlayer の音：" + place.from + "から鳴らします（" + n + " 台）。まわり " + Mathf.RoundToInt(place.near) + "m は同じ大きさ、" +
                 Mathf.RoundToInt(place.far) + "m 先まで届きます（会場の大きさから自動）" +
                 "\n　※ 音の出口（YamaPlayer の中の Audio Source）をステージの上に動かしています。YamaPlayer を動かしたら、インポーターの「YamaPlayer の音を会場に広げる」を押し直してください");
+            return true;
+        }
+
+        // ------------------------------------------------------------------ YamaPlayer の映像をモニター・背景の LED へ
+
+        /// <summary>ステージの中の「映像を映せる」マテリアル（LED の _VideoTex。カメラのモニターと背景の LED）</summary>
+        public static List<Material> VideoMaterials(GameObject stageRoot)
+        {
+            var list = new List<Material>();
+            if (stageRoot == null) return list;
+            foreach (var r in stageRoot.GetComponentsInChildren<Renderer>(true))
+                foreach (var m in r.sharedMaterials)
+                    if (m != null && m.shader != null && m.shader.name == SKAssets.ShaderLED && m.HasProperty("_VideoTex") && m.HasProperty("_MonAsp") && !list.Contains(m)
+                        && (IsUnderName(r.transform, "BACKDROP") || m.GetTexture("_CamA") != null)) list.Add(m);
+            return list;
+        }
+
+        static bool IsUnderName(Transform t, string name)
+        {
+            for (var p = t; p != null; p = p.parent) if (p.name == name) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// YamaPlayer の「スクリーン」に、ステージの LED のマテリアルを足す（種類 = Material、プロパティ = _VideoTex）。
+        /// YamaPlayer が動画を再生すると、そのテクスチャを入れてくれる（AVPro の上下・色も YamaPlayer が直したもの）。
+        /// 前に足したステージの LED（古いマテリアル）は外してから足す。モニターに映すかどうかは操作パネルの「モニター」で選ぶ
+        /// </summary>
+        public static bool LinkVideo(Action<string> log, List<Material> mats)
+        {
+            var yt = YamaType;
+            if (yt == null) { log("⚠ YamaPlayer が入っていません"); return false; }
+            var ctrls = InScene(yt);
+            if (ctrls.Count == 0)
+            {
+                log("YamaPlayer がシーンに無いので、映像はまだつないでいません（YamaPlayer を置いたら、インポーターの「YamaPlayer をステージにつなぐ」を押してください）");
+                return false;
+            }
+            if (mats.Count == 0) return false;
+            if (ctrls.Count > 1) log("⚠ YamaPlayer が " + ctrls.Count + " 台あります。映像は 1 台目（" + ctrls[0].gameObject.name + "）のものを映します");
+            var c = ctrls[0];
+            var so = new SerializedObject(c);
+            var types = so.FindProperty("_screenTypes");
+            var screens = so.FindProperty("_screens");
+            var props = so.FindProperty("_textureProperties");
+            if (types == null || screens == null || props == null || !types.isArray || !screens.isArray || !props.isArray)
+            {
+                log("⚠ YamaPlayer の画面（スクリーン）の設定が見つかりませんでした（YamaPlayer のバージョンが違うかもしれません）");
+                return false;
+            }
+            // 前に足したもの（すてーじ工房の LED・消えたもの）を外す
+            for (int i = screens.arraySize - 1; i >= 0; i--)
+            {
+                var o = screens.GetArrayElementAtIndex(i).objectReferenceValue;
+                var m = o as Material;
+                bool ours = m != null && m.shader != null && m.shader.name == SKAssets.ShaderLED;
+                if (o != null && !ours) continue;
+                if (i >= types.arraySize || i >= props.arraySize) continue;
+                screens.GetArrayElementAtIndex(i).objectReferenceValue = null;
+                screens.DeleteArrayElementAtIndex(i); types.DeleteArrayElementAtIndex(i); props.DeleteArrayElementAtIndex(i);
+            }
+            foreach (var m in mats)
+            {
+                int i = screens.arraySize;
+                screens.arraySize = i + 1; types.arraySize = i + 1; props.arraySize = i + 1;
+                screens.GetArrayElementAtIndex(i).objectReferenceValue = m;
+                types.GetArrayElementAtIndex(i).intValue = 2;   // ScreenType.Material
+                props.GetArrayElementAtIndex(i).stringValue = "_VideoTex";
+            }
+            so.ApplyModifiedProperties();
+            EditorUtility.SetDirty(c);
+            if (c.gameObject.scene.IsValid()) EditorSceneManager.MarkSceneDirty(c.gameObject.scene);
+            log("YamaPlayer の映像：モニター・背景の LED " + mats.Count + " 枚に映せるようにしました（操作パネルの「モニター・カメラ」タブで「映像」を選ぶと映ります）");
             return true;
         }
 

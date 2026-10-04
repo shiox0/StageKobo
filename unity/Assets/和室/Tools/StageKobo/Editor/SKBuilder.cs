@@ -35,6 +35,12 @@ namespace Washitsu.StageKobo.Editor
         public bool yama = true;
         /// <summary>シーンの YamaPlayer の音を、ステージ（スピーカー）から会場ぜんたいに届くようにする</summary>
         public bool yamaSound = true;
+        /// <summary>YamaPlayer の映像をステージのモニター・背景の LED に映せるようにする（操作パネルの「映像」）</summary>
+        public bool video = true;
+        /// <summary>ステージを照らす本物のライト（照明の色で演者を照らす）</summary>
+        public bool stageLight = true;
+        /// <summary>ステージを照らすライトの明るさ（1 = ふつう）</summary>
+        public float stageLightPower = 1f;
         /// <summary>演者を照らすスポットライト（本物の Spot Light 2 灯。UdonSharp 版は登録した人を追う）</summary>
         public bool spots = true;
         /// <summary>スポットライトの明るさ（1 = ふつう）</summary>
@@ -46,12 +52,14 @@ namespace Washitsu.StageKobo.Editor
     /// </summary>
     public static class SKCh
     {
-        public const int MOVE = 0, COLOR = 1, PALETTE = 2, DIM = 3, LASER = 4, MASTER = 5, MONITOR = 6, WASH = 7, PEN = 8, CAM1 = 9, CAM2 = 10, PERF = 11, AMBIENT = 12, MONITOR2 = 13, N = 14;
-        // MONITOR = メインのモニター、MONITOR2 = サブのモニター（ライブ映像 / VJ映像を別々に切り替える）
+        public const int MOVE = 0, COLOR = 1, PALETTE = 2, DIM = 3, LASER = 4, MASTER = 5, MONITOR = 6, WASH = 7, PEN = 8, CAM1 = 9, CAM2 = 10, PERF = 11, AMBIENT = 12, MONITOR2 = 13, MONITOR3 = 14, BACKDROP = 15, N = 16;
+        // MONITOR = メインのモニター、MONITOR2 = サブのモニター（右）、MONITOR3 = サブのモニター（左）：カメラ1・カメラ2・VJ・映像（_Sel 0〜3）
+        // BACKDROP = 背景の LED：いつもの（模様・VJ）／映像
+        // ACT_BACK：背景の LED（val 0 = 模様、1 = VJ、2 = 映像）／ACT_PICK：カメラの対象（val = カメラ×100 + 名前の欄。90 = 前へ、91 = 次へ、99 = 外す）／ACT_LINK：スポットライトもカメラの対象を追う（val = カメラ×10 + 1/0）
         // ACT_UP：カメラのアップで顔を追う人に「押した人」を登録（val 0 = カメラ1、1 = カメラ2、3 = 外す）
         // ACT_AUDIO：音に反応（AudioLink）の ON / OFF（val 1 = ON、0 = OFF）
         // ACT_SPOT：演者を照らすスポットに「押した人」を登録（val 0 = スポット1、1 = スポット2、3 = 固定に戻す）／ACT_SPOTON：スポット ON / OFF
-        public const int ACT_BPM = 20, ACT_SPEED = 21, ACT_STROBE = 22, ACT_FX = 23, ACT_UP = 24, ACT_AUDIO = 25, ACT_SPOT = 26, ACT_SPOTON = 27, ACT_HOME = 28;
+        public const int ACT_BPM = 20, ACT_SPEED = 21, ACT_STROBE = 22, ACT_FX = 23, ACT_UP = 24, ACT_AUDIO = 25, ACT_SPOT = 26, ACT_SPOTON = 27, ACT_HOME = 28, ACT_BACK = 29, ACT_PICK = 30, ACT_LINK = 31;
         public const int MODE_CONST = 0, MODE_BEAT = 1, MODE_MOVE = 2, MODE_TIME = 3;
     }
 
@@ -112,7 +120,10 @@ namespace Washitsu.StageKobo.Editor
         public Animator lightAnimator;
         public Animator[] camAnimators = new Animator[2];
         public List<Renderer> camMonitors = new List<Renderer>();     // カメラ映像のモニター：メイン
-        public List<Renderer> camMonitors2 = new List<Renderer>();    // カメラ映像のモニター：サブ
+        public List<Renderer> camMonitors2 = new List<Renderer>();    // カメラ映像のモニター：サブ（右）
+        public List<Renderer> camMonitors3 = new List<Renderer>();    // カメラ映像のモニター：サブ（左）
+        public List<Material> videoMats = new List<Material>();       // YamaPlayer の映像を入れるマテリアル（_VideoTex）
+        public List<Light> stageLights = new List<Light>();           // ステージを照らす本物のライト（照明の色）
         public List<ParticleSystem> sparks = new List<ParticleSystem>(), confetti = new List<ParticleSystem>(), smoke = new List<ParticleSystem>();
         public List<Transform> mirrorBalls = new List<Transform>();
         public List<Renderer> paletteExtra = new List<Renderer>();   // パレットの色に追従するもの（ペンライト・客席のふち・奥のウォッシュ）
@@ -208,6 +219,7 @@ namespace Washitsu.StageKobo.Editor
                 if (cfg.beams) BuildFixtures(ctx);
                 SKStageLights.Build(ctx);   // LEDバー・ストロボ・ネオン・文字の動き（ブラウザ版と同じ光り方。音にも反応）
                 SKSpots.Build(ctx);         // 演者を照らすスポットライト（本物のライト）
+                SKSpots.BuildStageLights(ctx);   // ステージを照らすライト（本物のライト・照明の色）
                 if (cfg.wash) BuildWash(ctx);
                 if (cfg.colliders) AddColliders(ctx);
                 if (cfg.probe) AddReflectionProbe(ctx);
@@ -564,6 +576,13 @@ namespace Washitsu.StageKobo.Editor
             mat.SetFloat("_Src", 1);   // 既定は VJ パターン
             var info = new SKLed { r = r, m = mat, dx = dx, dy = dy, backdrop = IsUnder(r.transform, "BACKDROP") };
             ctx.leds.Add(info);
+            mat.SetFloat("_Sel", -1f);
+            if (info.backdrop)
+            {
+                // 背景の LED にも映像（YamaPlayer）を映せるように。縦横比はドットの数から
+                mat.SetFloat("_MonAsp", (float)dx / Mathf.Max(1, dy));
+                if (ctx.cfg.video) ctx.videoMats.Add(mat);
+            }
 
             // LEDモニター（アセット）なら、映すもの（カメラ・画像・文字・VJリモコンの映像）を state から決める
             var u = OwnerUnit(ctx, r.transform);
@@ -576,11 +595,23 @@ namespace Washitsu.StageKobo.Editor
                 if ((src == "cam1" || src == "cam2") && ctx.cfg.cams && ctx.camRT[0] != null)
                 {
                     int ck = src == "cam1" ? 0 : 1;
+                    if (ctx.camRT[ck] == null) ck = 0;
                     mat.SetTexture("_MainTex", ctx.camRT[ck]);
                     mat.SetVector("_MainRect", Cover(ma, ctx.camAspect[ck]));   // カメラの絵のまん中を、モニターの縦横比で切り抜く
                     info.sub = IsSubMonitor(u);
                     mat.SetFloat("_Src", MonitorMode(ctx, info.sub) == "vj" ? 1 : 0);
-                    (info.sub ? ctx.camMonitors2 : ctx.camMonitors).Add(r);
+                    // 操作パネルの「モニター」：カメラ1・カメラ2・VJ・映像（_Sel）。サブは客席から見て右（x > 0）と左に分ける
+                    int grp = !info.sub ? 0 : u.threePos.x < 0f ? 2 : 1;
+                    (grp == 0 ? ctx.camMonitors : grp == 1 ? ctx.camMonitors2 : ctx.camMonitors3).Add(r);
+                    for (int k = 0; k < 2; k++)
+                        if (ctx.camRT[k] != null)
+                        {
+                            mat.SetTexture(k == 0 ? "_CamA" : "_CamB", ctx.camRT[k]);
+                            mat.SetVector(k == 0 ? "_CamARect" : "_CamBRect", Cover(ma, ctx.camAspect[k]));
+                        }
+                    mat.SetFloat("_MonAsp", ma);
+                    mat.SetFloat("_Sel", MonitorMode(ctx, info.sub) == "vj" && ctx.cfg.vj ? 2f : ck);
+                    if (ctx.cfg.video) ctx.videoMats.Add(mat);
                     info.camMonitor = true;
                 }
                 else if (src == "image" || src == "text")

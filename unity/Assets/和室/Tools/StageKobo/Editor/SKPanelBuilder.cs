@@ -12,7 +12,8 @@ namespace Washitsu.StageKobo.Editor
 {
     /// <summary>
     /// 操作パネル（v0.11〜）：レーザーで押す UI（World Space Canvas）の横長パネル。手前と裏に同じものを置く。
-    ///  ・タブ：照明 ／ VJ（左 = デッキA・まん中 = 映す・切り替え・パッド・右 = デッキB）／ VJ の効果 ／ 特効・カメラ ／ モニター
+    ///  ・タブ：照明 ／ VJ（左 = デッキA・まん中 = 映す・切り替え・パッド・右 = デッキB）／ VJ の効果 ／ 特効 ／ モニター・カメラ
+    ///    モニター・カメラ（v0.12〜）：左 = メイン・サブ右・サブ左・背景 LED に何を映すか、まん中・右 = カメラ1・2 の対象（名前の欄）・ライトも追従・カメラワーク
     ///    タブの切り替えは押した人の画面だけ（GameObject.SetActive の UI イベント）。ボタンの内容は全員に同期（UdonSharp 版）
     ///  ・手前：持ち運べる（取っ手に VRC Pickup・VRC Object Sync。パネルは取っ手に付いていく）。「元の場所に戻す」ボタン
     ///  ・裏：背景の裏に固定。右側に確認用のプレビュー（VJ 出力・デッキA/B・カメラ1/2）
@@ -41,6 +42,7 @@ namespace Washitsu.StageKobo.Editor
             public int kind, ch = -1, val;       // kind 0 = 照明（StageKoboController）/ 1 = VJ（StageKoboVJ）
             public bool mark;                     // 選ばれていたら印
             public string[] stripes;
+            public int pickCam = -1, pickSlot;    // カメラの対象の名前の欄（ボタンの文字をコントローラーが書き換える）
             public string trigger; public Animator anim;                         // Animator だけの版
             public List<ParticleSystem> ps; public List<AudioSource> audio;
         }
@@ -52,6 +54,8 @@ namespace Washitsu.StageKobo.Editor
             public List<Btn> btns = new List<Btn>();
             public int info = -1, lines = 0;      // info >= 0：ボタンの代わりに状態の文字（0 = A, 1 = B, 2 = まん中）
             public int fontSize = 19;
+            public int per;                       // 1 行のボタンの数（0 = 幅から自動）
+            public bool header;                   // 見出しだけ（ボタンが無くても消さない）
         }
 
         class Column { public float x, w; public Color bg = new Color(0, 0, 0, 0); public List<Sec> secs = new List<Sec>(); }
@@ -135,6 +139,9 @@ namespace Washitsu.StageKobo.Editor
             light.Add(Channel(ctx, "レーザー", SKCh.LASER, SKMath.LaserModes.Select(x => "Laser_" + x), a));
             light.Add(Channel(ctx, "カラーウォッシュ（床の色）", SKCh.WASH, L("Wash_On", "Wash_Off"), a));
             light.Add(Channel(ctx, "客席のペンライト", SKCh.PEN, L("Pen_cue", "Pen_white", "Pen_rainbow"), a));
+            if (udon && ctx.spotLights.Count > 0)
+                light.Add(S("スポットライト（押した人を追う・もう一度で固定。カメラの「ライトも追従」が ON ならカメラの対象）", B("自分→スポット1", SKCh.ACT_SPOT, 0, CUp), B("自分→スポット2", SKCh.ACT_SPOT, 1, CUp), B("固定に戻す", SKCh.ACT_SPOT, 3, CWarn, false),
+                    B("スポット ON", SKCh.ACT_SPOTON, 1, CTempo), B("スポット OFF", SKCh.ACT_SPOTON, 0, CTempo)));
             pages.Add(Flow("照明", light, 3));
 
             // ---- VJ（UdonSharp 版で VJ があるときだけ）
@@ -229,14 +236,14 @@ namespace Washitsu.StageKobo.Editor
                 pages.Add(fxPage);
             }
 
-            // ---- 特効・カメラ
-            var cam = new List<Sec>();
-            var fx = new Sec { title = "特効" };
+            // ---- 特効（これから増えても、このタブだけで並べられるように独立）
+            var fxl = new List<Sec>();
+            var fx = new Sec { title = "特効（押すと 1 回出る）" };
             var groups = new[] { ctx.sparks, ctx.confetti, ctx.smoke };
             string[] fxNames = { "スパーク", "紙吹雪", "スモーク" };
             for (int gi = 0; gi < 3; gi++)
                 if (groups[gi].Count > 0) fx.btns.Add(new Btn { label = fxNames[gi], color = CFx, ch = SKCh.ACT_FX, val = gi, ps = groups[gi] });
-            cam.Add(fx);
+            fxl.Add(fx);
             if (ctx.fxCustom.Count > 0)
             {
                 var fx2 = new Sec { title = udon && ctx.fxCustom.Any(x => x.mode == 1) ? "追加の特効（ON/OFF のものは、もう一度押すと止まる）" : "追加の特効" };
@@ -245,33 +252,104 @@ namespace Washitsu.StageKobo.Editor
                     var cc = ctx.fxCustom[k];
                     fx2.btns.Add(new Btn { label = cc.name, color = CFx, ch = SKCh.ACT_FX, val = 3 + k, ps = cc.systems, audio = cc.audio, mark = udon && cc.mode == 1 });
                 }
-                cam.Add(fx2);
+                fxl.Add(fx2);
             }
-            for (int k = 0; k < 2; k++)
-                if (ctx.camAnimators[k] != null)
-                    cam.Add(Channel(ctx, "カメラ" + (k + 1) + "（カメラワーク）", k == 0 ? SKCh.CAM1 : SKCh.CAM2, SKMath.CamModes.Select(x => "Shot_" + x), ctx.camAnimators[k]));
-            if (udon && (ctx.cams[0] != null || ctx.cams[1] != null))
-                cam.Add(S("カメラのアップで顔を追う人（押した人を登録・もう一度で外れる）", B("自分→カメラ1", SKCh.ACT_UP, 0, CUp), B("自分→カメラ2", SKCh.ACT_UP, 1, CUp), B("登録を外す", SKCh.ACT_UP, 3, CWarn, false)));
-            if (udon && ctx.spotLights.Count > 0)
-                cam.Add(S("スポットライト（押した人を追う・もう一度で固定に戻る）", B("自分→スポット1", SKCh.ACT_SPOT, 0, CUp), B("自分→スポット2", SKCh.ACT_SPOT, 1, CUp), B("固定に戻す", SKCh.ACT_SPOT, 3, CWarn, false),
-                    B("スポット ON", SKCh.ACT_SPOTON, 1, CTempo), B("スポット OFF", SKCh.ACT_SPOTON, 0, CTempo)));
-            pages.Add(Flow("特効・カメラ", cam, 2));
+            pages.Add(Flow("特効", fxl, 2));
 
-            // ---- モニター（何を映すか）
-            var mon = new List<Sec>();
-            var rn = new Dictionary<string, string> { { "Monitor_Live", "カメラ" }, { "Monitor_VJ", "VJ" }, { "Monitor2_Live", "カメラ" }, { "Monitor2_VJ", "VJ" } };
-            mon.Add(Channel(ctx, "メインのモニター", SKCh.MONITOR, L("Monitor_Live", "Monitor_VJ"), a, rn));
-            mon.Add(Channel(ctx, "サブのモニター（左右ミラーなど）", SKCh.MONITOR2, L("Monitor2_Live", "Monitor2_VJ"), a, rn));
-            if (udon && vjInfo != null && vjInfo.ctrl != null)
-            {
-                if (ctx.leds.Any(l => l.backdrop)) mon.Add(Many("背景の LED に VJ を", L("映す", "映さない"), 1, SKVJIdx.V_BACK, new[] { 1, 0 }, CVJ));
-                if (ctx.leds.Count(l => l.backdrop || l.camMonitor || l.vjAlways) > 1) mon.Add(Many("VJ の映し方", L("1枚ずつ", "つなげて1枚"), 1, SKVJIdx.V_MAP, null, CVJ));
-            }
-            pages.Add(Flow("モニター", mon, 2));
+            // ---- モニター・カメラ
+            pages.Add(MonitorCameraPage(ctx, udon, vjInfo));
 
-            foreach (var p in pages) foreach (var col in p.cols) col.secs.RemoveAll(s => s.info < 0 && s.btns.Count == 0);
+            foreach (var p in pages) foreach (var col in p.cols) col.secs.RemoveAll(s => s.info < 0 && s.btns.Count == 0 && !s.header);
+            foreach (var p in pages) foreach (var col in p.cols) if (col.secs.All(s => s.btns.Count == 0 && s.info < 0)) col.secs.Clear();
             pages.RemoveAll(p => p.cols.All(col => col.secs.Count == 0));
             return pages;
+        }
+
+        /// <summary>
+        /// モニター・カメラのタブ。左の列 = どのモニターに何を映すか（1 行 = 1 台）、まん中・右 = カメラ1・カメラ2
+        /// （映す人を名前で選ぶ・ライトも追従・カメラワーク）
+        /// </summary>
+        static Page MonitorCameraPage(SKContext ctx, bool udon, SKVJInfo vjInfo)
+        {
+            var a = ctx.lightAnimator;
+            var p = new Page { tab = "モニター・カメラ" };
+            float wL = 540, wC = (W - 2 * PAD - wL - 2 * 20f) / 2f;
+            var left = new Column { x = PAD, w = wL, bg = new Color(0.2f, 0.18f, 0.4f, 0.18f) };
+            p.cols.Add(left);
+            var rn = new Dictionary<string, string>();
+            string[] keys = { "Cam1", "Cam2", "VJ", "Video" }, labels = { "カメラ1", "カメラ2", "VJ", "映像" };
+            string[] pres = { "Monitor", "Monitor2", "Monitor3" };
+            string[] titles = { "メインモニター", "サブモニター 右（客席から見て）", "サブモニター 左（客席から見て）" };
+            int[] chs = { SKCh.MONITOR, SKCh.MONITOR2, SKCh.MONITOR3 };
+            for (int g = 0; g < 3; g++)
+            {
+                for (int k = 0; k < 4; k++) rn[pres[g] + "_" + keys[k]] = labels[k];
+                var sec = Channel(ctx, titles[g], chs[g], keys.Select(k => pres[g] + "_" + k), a, rn);
+                sec.per = 4;
+                foreach (var b in sec.btns) if (b.label == "VJ") b.color = CVJ; else if (b.label == "映像") b.color = CScene;
+                left.secs.Add(sec);
+            }
+            // 背景の LED：模様 ／ VJ ／ 映像
+            bool hasBack = ctx.leds.Any(l => l.backdrop);
+            bool hasVJ = udon && vjInfo != null && vjInfo.ctrl != null;
+            bool hasBackVideo = ctx.channels[SKCh.BACKDROP] != null;
+            if (hasBack)
+            {
+                var bk = new Sec { title = "背景の LED", per = 4 };
+                if (udon)
+                {
+                    if (hasVJ || hasBackVideo) bk.btns.Add(B("模様", SKCh.ACT_BACK, 0, CBtn));
+                    if (hasVJ) bk.btns.Add(B("VJ", SKCh.ACT_BACK, 1, CVJ));
+                    if (hasBackVideo) bk.btns.Add(B("映像", SKCh.ACT_BACK, 2, CScene));
+                }
+                else
+                {
+                    var c = Channel(ctx, "", SKCh.BACKDROP, L("Back_Normal", "Back_Video"), a, new Dictionary<string, string> { { "Back_Normal", "模様" }, { "Back_Video", "映像" } });
+                    bk.btns.AddRange(c.btns);
+                }
+                if (bk.btns.Count > 1) left.secs.Add(bk);
+            }
+            if (hasVJ && ctx.leds.Count(l => l.backdrop || l.camMonitor || l.vjAlways) > 1)
+            {
+                var map = Many("VJ の映し方（LED が何枚もあるとき）", L("1枚ずつ", "つなげて1枚"), 1, SKVJIdx.V_MAP, null, CVJ);
+                map.per = 4;
+                left.secs.Add(map);
+            }
+
+            // カメラ1・カメラ2
+            for (int k = 0; k < 2; k++)
+            {
+                var col = new Column { x = PAD + wL + 20f + k * (wC + 20f), w = wC, bg = new Color(0.25f, 0.16f, 0.08f, 0.16f) };
+                bool hasCam = ctx.cams[k] != null || ctx.camAnimators[k] != null;
+                if (!hasCam) { p.cols.Add(col); continue; }
+                col.secs.Add(new Sec { title = "カメラ" + (k + 1), titleCol = TitleCol, header = true });
+                if (udon && ctx.cams[k] != null)
+                {
+                    var who = new Sec { title = "映す人（名前を押す・もう一度押すと外れる）", per = 3, fontSize = 17 };
+                    for (int i = 0; i < 6; i++)
+                        who.btns.Add(new Btn { label = "－", ch = SKCh.ACT_PICK, val = k * 100 + i, color = CUp, mark = true, pickCam = k, pickSlot = i });
+                    col.secs.Add(who);
+                    var nav = new Sec { title = "", per = 3 };
+                    nav.btns.Add(B("◀ 前の 6 人", SKCh.ACT_PICK, k * 100 + 90, CTab, false));
+                    nav.btns.Add(B("次の 6 人 ▶", SKCh.ACT_PICK, k * 100 + 91, CTab, false));
+                    nav.btns.Add(B("外す（全体を映す）", SKCh.ACT_PICK, k * 100 + 99, CWarn, false));
+                    col.secs.Add(nav);
+                    if (ctx.spotLights.Count > k)
+                    {
+                        var link = Many("スポット" + (k + 1) + "もこの人を追う（ライトも追従）", L("ON", "OFF"), 0, SKCh.ACT_LINK, new[] { k * 10 + 1, k * 10 }, CTempo);
+                        link.per = 3;
+                        col.secs.Add(link);
+                    }
+                }
+                if (ctx.camAnimators[k] != null)
+                {
+                    var shots = Channel(ctx, "カメラワーク", k == 0 ? SKCh.CAM1 : SKCh.CAM2, SKMath.CamModes.Select(x => "Shot_" + x), ctx.camAnimators[k]);
+                    shots.per = 4;
+                    col.secs.Add(shots);
+                }
+                p.cols.Add(col);
+            }
+            return p;
         }
 
         /// <summary>セクションを n 列に流し込む（順番はそのまま、いちばん低い列へ）</summary>
@@ -300,10 +378,13 @@ namespace Washitsu.StageKobo.Editor
 
         static int PerRow(float w) { return Mathf.Max(1, Mathf.FloorToInt((w + GAP) / (BW + GAP))); }
 
+        static int PerRow(Sec s, float w) { return s.per > 0 ? s.per : PerRow(w); }
+
         static float SecHeight(Sec s, float w)
         {
             if (s.info >= 0) return TITLE + s.lines * (s.fontSize + 7) + 8 + SECGAP;
-            int rows = (s.btns.Count + PerRow(w) - 1) / PerRow(w);
+            if (s.btns.Count == 0) return string.IsNullOrEmpty(s.title) ? 0 : TITLE;
+            int rows = (s.btns.Count + PerRow(s, w) - 1) / PerRow(s, w);
             return (string.IsNullOrEmpty(s.title) ? 0 : TITLE) + rows * (BH + GAP) + SECGAP;
         }
 
@@ -426,7 +507,7 @@ namespace Washitsu.StageKobo.Editor
             var tabBtns = new List<Button>();
             for (int i = 0; i < pages.Count; i++)
             {
-                var tb = MakeButton(go.transform, pages[i].tab, PAD + i * 152, 58, 146, 54, CTab, 20);
+                var tb = MakeButton(go.transform, pages[i].tab, PAD + i * 182, 58, 176, 54, CTab, 20);
                 tabBtns.Add(tb);
                 var m = new GameObject("Selected", typeof(RectTransform), typeof(Image));
                 m.transform.SetParent(tb.transform, false);
@@ -468,7 +549,8 @@ namespace Washitsu.StageKobo.Editor
                             y += hh + 4 + SECGAP;
                             continue;
                         }
-                        int per = PerRow(col.w);
+                        if (s.btns.Count == 0) continue;
+                        int per = PerRow(s, col.w);
                         float bw = (col.w - (per - 1) * GAP) / per;
                         for (int i = 0; i < s.btns.Count; i++)
                         {
@@ -478,6 +560,11 @@ namespace Washitsu.StageKobo.Editor
                             GameObject mark = b.mark && udon ? Mark(btn) : null;
                             if (udon && b.ch >= 0) items.Add(new SKUdon.PanelItem { button = btn, kind = b.kind, ch = b.ch, val = b.val, mark = mark });
                             if (b.kind == 0) locals.Add(new KeyValuePair<Btn, Button>(b, btn));
+                            if (udon && b.pickCam >= 0)
+                            {
+                                var tx = btn.GetComponentInChildren<Text>();
+                                if (tx != null) { parts.pickTexts.Add(tx); parts.pickCam.Add(b.pickCam); parts.pickSlot.Add(b.pickSlot); }
+                            }
                         }
                         y += ((s.btns.Count + per - 1) / per) * (BH + GAP) + SECGAP;
                     }

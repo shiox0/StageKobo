@@ -36,6 +36,13 @@ Shader "StageKobo/LEDDot"
         _VJLod ("ドット1個ぶんの平均（1枚ずつ）", Float) = 0
         _VJLodSpan ("ドット1個ぶんの平均（つなげて1枚）", Float) = 0
         _ALAmount ("音に反応（AudioLink）の強さ", Range(0,1)) = 0
+        _Sel ("映すものの切り替え（-1 = いつもの / 0 カメラ1 / 1 カメラ2 / 2 VJ / 3 映像）", Float) = -1
+        _CamA ("カメラ1", 2D) = "black" {}
+        _CamARect ("カメラ1の切り抜き", Vector) = (0,0,1,1)
+        _CamB ("カメラ2", 2D) = "black" {}
+        _CamBRect ("カメラ2の切り抜き", Vector) = (0,0,1,1)
+        _VideoTex ("映像（YamaPlayer が入れる）", 2D) = "black" {}
+        _MonAsp ("この画面の縦横比（映像の切り抜き用）", Float) = 1.78
     }
     SubShader
     {
@@ -64,6 +71,9 @@ Shader "StageKobo/LEDDot"
             float _Udon_SKVJBack;   // VJ リモコンの「背景LED」（VRCShader.SetGlobalFloat）
             float _Udon_SKVJMap;    // 0 = 1枚ずつ、1 = つなげて1枚
             float _ALAmount;
+            float _Sel, _MonAsp;
+            sampler2D _CamA, _CamB, _VideoTex;
+            float4 _CamARect, _CamBRect, _VideoTex_TexelSize;
 
             struct appdata
             {
@@ -106,8 +116,21 @@ Shader "StageKobo/LEDDot"
                 float t = _Time.y;
                 float beat = skBeat(_BPM);   // UdonSharp 版では全員で同期した拍
                 float3 c;
+                // 操作パネルの「モニター」：カメラ1・カメラ2・VJ・映像（_Sel。-1 のときは今まで通り）
                 bool vj = _VJ > 0.5 || _VJAlways > 0.5 || (_VJBackdrop > 0.5 && _Udon_SKVJBack > 0.5);
-                if (vj)
+                if (_Sel > -0.5) vj = _Sel > 1.5 && _Sel < 2.5;
+                if (_Sel > -0.5 && _Sel < 0.5) c = tex2Dlod(_CamA, float4(_CamARect.xy + suv * _CamARect.zw, 0, 0)).rgb;
+                else if (_Sel > 0.5 && _Sel < 1.5) c = tex2Dlod(_CamB, float4(_CamBRect.xy + suv * _CamBRect.zw, 0, 0)).rgb;
+                else if (_Sel > 2.5)
+                {
+                    // 映像（YamaPlayer）：縦横比を変えずに、まん中を切り抜く。映像が無いときは黒
+                    float ta = _VideoTex_TexelSize.w > 0.5 ? _VideoTex_TexelSize.z / _VideoTex_TexelSize.w : 1.78;
+                    float2 sz = ta > _MonAsp ? float2(_MonAsp / ta, 1.0) : float2(1.0, ta / _MonAsp);
+                    float2 vuv = (1.0 - sz) * 0.5 + suv * sz;
+                    float lod = _Led > 0.5 ? max(0.0, log2(max(1.0, _VideoTex_TexelSize.z * sz.x / _DotsX)) - 0.5) : 0.0;
+                    c = _VideoTex_TexelSize.z > 4.5 ? tex2Dlod(_VideoTex, float4(vuv, 0, lod)).rgb : float3(0, 0, 0);
+                }
+                else if (vj)
                 {
                     bool span = _Udon_SKVJMap > 0.5;
                     float4 R = span ? _VJRectSpan : _VJRect;

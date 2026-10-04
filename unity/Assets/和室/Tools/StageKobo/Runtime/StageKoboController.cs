@@ -34,8 +34,10 @@ namespace Washitsu.StageKobo
         public const int CH_CAM2 = 10;
         public const int CH_PERF = 11;
         public const int CH_AMBIENT = 12;
-        public const int CH_MONITOR2 = 13;  // サブのモニター（CH_MONITOR はメイン）
-        public const int NCH = 14;
+        public const int CH_MONITOR2 = 13;  // サブのモニター（右。CH_MONITOR はメイン）
+        public const int CH_MONITOR3 = 14;  // サブのモニター（左）
+        public const int CH_BACKDROP = 15;  // 背景の LED（いつもの／映像）
+        public const int NCH = 16;
         // ---- ボタンの「動作」番号
         public const int ACT_BPM = 20;      // val = 増減（0 = TAP）
         public const int ACT_SPEED = 21;    // val = 0:×½ 1:×1 2:×2
@@ -46,6 +48,10 @@ namespace Washitsu.StageKobo
         public const int ACT_SPOT = 26;     // 演者を照らすスポットに「押した人」を登録（val 0 = スポット1、1 = スポット2、3 = 固定に戻す）
         public const int ACT_SPOTON = 27;   // スポットライト：val 1 = ON、0 = OFF
         public const int ACT_HOME = 28;     // 持ち運べる操作パネルを元の場所に戻す
+        public const int ACT_BACK = 29;     // 背景の LED：val 0 = 模様、1 = VJ、2 = 映像
+        public const int ACT_PICK = 30;     // カメラの対象：val = カメラ×100 + 名前の欄（0〜5）。90 = 前の名前へ、91 = 次の名前へ、99 = 外す
+        public const int ACT_LINK = 31;     // スポットライトもカメラの対象を追う：val = カメラ×10 + 1（ON）/ 0（OFF）
+        public const int PICK_N = 6;        // 名前の欄の数（1 ページ）
         // ---- ステートの時間の合わせ方
         public const int MODE_CONST = 0;    // 止まっている（色の固定など）
         public const int MODE_BEAT = 1;     // 拍に合わせる（Tempo）
@@ -86,6 +92,10 @@ namespace Washitsu.StageKobo
         public Vector3 panelOffPos;
         public Quaternion panelOffRot = Quaternion.identity;
         public VRC.SDK3.Components.VRCObjectSync panelSync;
+        // カメラの対象を選ぶ名前の欄（パネルの数 × カメラ 2 × 6）
+        public Text[] pickTexts;
+        public int[] pickCam;
+        public int[] pickSlot;
         // ステージ裏の照明卓（物理スイッチ）のランプ
         public Material deskMat;
         public int[] deskCh;
@@ -120,6 +130,10 @@ namespace Washitsu.StageKobo
         [UdonSynced] public bool audioOn = true;  // 曲の音に反応する（AudioLink。シェーダーには _Udon_SKALOff で渡す）
         [UdonSynced] public int sp1 = -1;       // スポット1が追う人（プレイヤーID。-1 = 固定）
         [UdonSynced] public int sp2 = -1;       // スポット2
+        [UdonSynced] public bool spLink1;       // スポット1 がカメラ1の対象を追う（操作パネルの「ライトも追従」）
+        [UdonSynced] public bool spLink2;       // スポット2 がカメラ2の対象を追う
+        int pickPage;                           // 名前の欄のページ（自分の画面だけ）
+        int[] pickIds = new int[0];             // 名前の欄に出す人（プレイヤーID の小さい順）
         [UdonSynced] public bool spotOn = true; // スポットライト ON/OFF
         [UdonSynced] public bool[] fxOn;        // 追加の特効の ON/OFF（ON/OFF のものだけ使う）
 
@@ -164,6 +178,7 @@ namespace Washitsu.StageKobo
                 ResetSynced();   // 同期データが届くまでの仮の値（届いたら上書きされる）
             }
             localBeat = ServerBeat();
+            RefreshPicks();
             ApplyAll(true);
         }
 
@@ -211,6 +226,8 @@ namespace Washitsu.StageKobo
             audioOn = true;
             sp1 = -1;
             sp2 = -1;
+            spLink1 = false;
+            spLink2 = false;
             spotOn = true;
             fxOn = new bool[FxCount()];
         }
@@ -237,9 +254,16 @@ namespace Washitsu.StageKobo
             UpdateUI();
         }
 
+        public override void OnPlayerJoined(VRCPlayerApi player)
+        {
+            RefreshPicks();
+            UpdateUI();
+        }
+
         /// <summary>登録した人が抜けたら外す（持ち主が直して同期する）</summary>
         public override void OnPlayerLeft(VRCPlayerApi player)
         {
+            SendCustomEventDelayedFrames(nameof(RefreshPicksUI), 1);   // 抜けた人がリストから消えてから
             if (!Utilities.IsValid(player) || !Networking.IsOwner(gameObject)) return;
             int id = player.playerId;
             if (up1 != id && up2 != id && sp1 != id && sp2 != id) return;
@@ -331,7 +355,7 @@ namespace Washitsu.StageKobo
                 if (spotBeams != null && k < spotBeams.Length && spotBeams[k] != null && spotBeams[k].activeSelf != on) spotBeams[k].SetActive(on);
                 if (!on) continue;
                 Vector3 aim = spotAims[k];
-                int pid = k == 0 ? sp1 : (k == 1 ? sp2 : -1);
+                int pid = k == 0 ? (spLink1 ? up1 : sp1) : (k == 1 ? (spLink2 ? up2 : sp2) : -1);   // 「ライトも追従」ならカメラの対象
                 if (pid >= 0)
                 {
                     VRCPlayerApi p = VRCPlayerApi.GetPlayerById(pid);
@@ -399,6 +423,16 @@ namespace Washitsu.StageKobo
                 }
                 return;
             }
+            if (ch == ACT_PICK && (val % 100 == 90 || val % 100 == 91))
+            {
+                // 名前の欄のページ送り（自分の画面だけ）
+                RefreshPicks();
+                int pages = Mathf.Max(1, (pickIds.Length + PICK_N - 1) / PICK_N);
+                pickPage = (pickPage + (val % 100 == 91 ? 1 : pages - 1)) % pages;
+                RefreshPicks();
+                UpdateUI();
+                return;
+            }
             if (ch == ACT_STROBE)
             {
                 SendCustomNetworkEvent(NetworkEventTarget.All, nameof(Strobe));
@@ -462,6 +496,35 @@ namespace Washitsu.StageKobo
             else if (ch == ACT_SPOTON)
             {
                 spotOn = val != 0;
+            }
+            else if (ch == ACT_PICK)
+            {
+                // カメラの対象を名前の欄から選ぶ（同じ人をもう一度押すと外れる）
+                int cam = val / 100, slot = val % 100;
+                int id = -1;
+                if (slot != 99)
+                {
+                    int idx = pickPage * PICK_N + slot;
+                    if (idx < 0 || idx >= pickIds.Length) return;
+                    id = pickIds[idx];
+                }
+                if (cam == 0) up1 = up1 == id ? -1 : id;
+                else up2 = up2 == id ? -1 : id;
+            }
+            else if (ch == ACT_LINK)
+            {
+                if (val / 10 == 0) spLink1 = val % 10 == 1;
+                else spLink2 = val % 10 == 1;
+            }
+            else if (ch == ACT_BACK)
+            {
+                // 背景の LED：模様・VJ は VJ のコントローラー（背景LED に映す／映さない）、映像は背景のチャンネル
+                if (val < 2 && vj != null) vj.Press(StageKoboVJ.V_BACK, val);
+                if (chCount[CH_BACKDROP] > 0)
+                {
+                    sel[CH_BACKDROP] = Mathf.Clamp(val == 2 ? 1 : 0, 0, chCount[CH_BACKDROP] - 1);
+                    ApplyChannel(CH_BACKDROP, false);
+                }
             }
             else if (ch == ACT_UP)
             {
@@ -747,6 +810,21 @@ namespace Washitsu.StageKobo
             if (c == ACT_SPEED) return (v == 0 && speedMul < 0.75f) || (v == 1 && speedMul >= 0.75f && speedMul <= 1.5f) || (v == 2 && speedMul > 1.5f);
             if (c == ACT_AUDIO) return (v != 0) == audioOn;
             if (c == ACT_SPOTON) return (v != 0) == spotOn;
+            if (c == ACT_LINK) return (v / 10 == 0 ? spLink1 : spLink2) == (v % 10 == 1);
+            if (c == ACT_PICK)
+            {
+                int slot = v % 100, idx = pickPage * PICK_N + slot;
+                if (slot >= PICK_N || idx >= pickIds.Length) return false;
+                return pickIds[idx] == (v / 100 == 0 ? up1 : up2);
+            }
+            if (c == ACT_BACK)
+            {
+                bool video = chCount[CH_BACKDROP] > 0 && Clamp(sel[CH_BACKDROP], CH_BACKDROP) == 1;
+                if (v == 2) return video;
+                if (video) return false;
+                bool vjOn = vj != null && vj.IsOn(StageKoboVJ.V_BACK, 1);
+                return v == 1 ? vjOn : !vjOn;
+            }
             if (c == ACT_FX)
             {
                 int k = v - 3;
@@ -826,12 +904,53 @@ namespace Washitsu.StageKobo
 
         string SpotName(int id) { return id < 0 ? "固定" : PlayerName(id); }
 
-        /// <summary>モニターがいま映しているもの（ステート名の最後が _VJ なら VJ）</summary>
+        /// <summary>モニターがいま映しているもの（ステート名の最後で決める）</summary>
         string MonLabel(int c)
         {
             if (chCount[c] <= 0) return "-";
             string n = stNames[chStart[c] + Clamp(sel[c], c)];
-            return n.EndsWith("_VJ") ? "VJ" : "カメラ";
+            if (n.EndsWith("_VJ")) return "VJ";
+            if (n.EndsWith("_Video")) return "映像";
+            if (n.EndsWith("_Cam2")) return "カメラ2";
+            if (n.EndsWith("_Cam1")) return "カメラ1";
+            if (n.EndsWith("_Normal")) return vj != null && vj.IsOn(StageKoboVJ.V_BACK, 1) ? "VJ" : "模様";
+            return "カメラ";
+        }
+
+        /// <summary>名前の欄に出す人の一覧（プレイヤーID の小さい順。どの画面でも同じ並び）と、欄の文字</summary>
+        void RefreshPicks()
+        {
+            int n = VRCPlayerApi.GetPlayerCount();
+            VRCPlayerApi[] ps = new VRCPlayerApi[n];
+            VRCPlayerApi.GetPlayers(ps);
+            int[] ids = new int[n];
+            int m = 0;
+            for (int i = 0; i < n; i++) if (Utilities.IsValid(ps[i])) ids[m++] = ps[i].playerId;
+            int[] sorted = new int[m];
+            for (int i = 0; i < m; i++)
+            {
+                int v = ids[i], j = i;
+                while (j > 0 && sorted[j - 1] > v) { sorted[j] = sorted[j - 1]; j--; }
+                sorted[j] = v;
+            }
+            pickIds = sorted;
+            int pages = Mathf.Max(1, (m + PICK_N - 1) / PICK_N);
+            if (pickPage >= pages) pickPage = pages - 1;
+            if (pickPage < 0) pickPage = 0;
+            if (pickTexts == null || pickSlot == null) return;
+            for (int i = 0; i < pickTexts.Length && i < pickSlot.Length; i++)
+            {
+                if (pickTexts[i] == null) continue;
+                int idx = pickPage * PICK_N + pickSlot[i];
+                string t = idx < m ? PlayerName(pickIds[idx]) : "－";
+                if (pickTexts[i].text != t) pickTexts[i].text = t;
+            }
+        }
+
+        public void RefreshPicksUI()
+        {
+            RefreshPicks();
+            UpdateUI();
         }
 
         string SpeedLabel()
@@ -839,6 +958,12 @@ namespace Washitsu.StageKobo
             if (speedMul < 0.75f) return "½";
             if (speedMul > 1.5f) return "2";
             return "1";
+        }
+
+        /// <summary>VJ の状態が変わったとき（背景 LED の VJ など）に VJ 側から呼ぶ</summary>
+        public void RefreshPanel()
+        {
+            if (setupDone && sel != null && sel.Length == NCH) UpdateUI();
         }
 
         void UpdateUI()
@@ -856,11 +981,19 @@ namespace Washitsu.StageKobo
             {
                 VRCPlayerApi o = Networking.GetOwner(gameObject);
                 string who = Utilities.IsValid(o) ? o.displayName : "-";
-                string mon = chCount != null && chCount[CH_MONITOR] > 0 ? "モニター：メイン " + MonLabel(CH_MONITOR) + (chCount[CH_MONITOR2] > 0 ? " ／ サブ " + MonLabel(CH_MONITOR2) : "") + "   " : "";
+                string mon = "";
+                if (chCount != null)
+                {
+                    if (chCount[CH_MONITOR] > 0) mon += "メイン " + MonLabel(CH_MONITOR);
+                    if (chCount[CH_MONITOR2] > 0) mon += (mon == "" ? "" : "／") + "右 " + MonLabel(CH_MONITOR2);
+                    if (chCount[CH_MONITOR3] > 0) mon += (mon == "" ? "" : "／") + "左 " + MonLabel(CH_MONITOR3);
+                    if (chCount[CH_BACKDROP] > 0 || vj != null) mon += (mon == "" ? "" : "／") + "背景 " + (chCount[CH_BACKDROP] > 0 ? MonLabel(CH_BACKDROP) : (vj.IsOn(StageKoboVJ.V_BACK, 1) ? "VJ" : "模様"));
+                }
                 string text = "BPM " + Mathf.RoundToInt(bpm).ToString() + "   動きの速さ ×" + SpeedLabel() + "   さいごに操作した人：" + who
-                    + "\n" + mon + "アップで追う人：カメラ1 " + PlayerName(up1) + " ／ カメラ2 " + PlayerName(up2)
                     + (hasAudio ? "   音に反応 " + (audioOn ? "ON" : "OFF") : "")
-                    + (spots != null && spots.Length > 0 ? "\nスポット：1 " + SpotName(sp1) + " ／ 2 " + SpotName(sp2) + (spotOn ? "" : "（OFF）") : "");
+                    + "\nモニター：" + (mon == "" ? "-" : mon)
+                    + "\nカメラ1：" + PlayerName(up1) + (spLink1 ? "（ライト追従）" : "") + " ／ カメラ2：" + PlayerName(up2) + (spLink2 ? "（ライト追従）" : "")
+                    + (spots != null && spots.Length > 0 ? "　スポット：" + (spotOn ? "ON" : "OFF") : "");
                 if (statusText != null) statusText.text = text;
                 if (many) for (int i = 0; i < statusTexts.Length; i++) if (statusTexts[i] != null) statusTexts[i].text = text;
             }

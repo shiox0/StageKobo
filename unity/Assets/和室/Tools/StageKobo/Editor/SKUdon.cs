@@ -42,6 +42,8 @@ namespace Washitsu.StageKobo.Editor
         {
             public List<Text> status = new List<Text>(), infoA = new List<Text>(), infoB = new List<Text>(), infoC = new List<Text>();
             public List<GameObject> lamps = new List<GameObject>();
+            public List<Text> pickTexts = new List<Text>();          // カメラの対象の名前の欄（v0.12〜）
+            public List<int> pickCam = new List<int>(), pickSlot = new List<int>();
             public Transform handle, canvas, backCenter;
             public Component sync;
         }
@@ -282,6 +284,7 @@ namespace Washitsu.StageKobo.Editor
                 ctrl.statusText = null; ctrl.beatLamp = null;
                 ctrl.statusTexts = parts.status.ToArray();
                 ctrl.beatLamps = parts.lamps.ToArray();
+                ctrl.pickTexts = parts.pickTexts.ToArray(); ctrl.pickCam = parts.pickCam.ToArray(); ctrl.pickSlot = parts.pickSlot.ToArray();
                 ctrl.deskMat = null; ctrl.deskCh = new int[0]; ctrl.deskVal = new int[0];
                 ctrl.panelHandle = parts.handle; ctrl.panelCanvas = parts.canvas;
                 if (parts.handle != null && parts.canvas != null)
@@ -336,7 +339,7 @@ namespace Washitsu.StageKobo.Editor
                 foreach (var it in items) if (it.button != null) for (int k = it.button.onClick.GetPersistentEventCount() - 1; k >= 0; k--) UnityEventTools.RemovePersistentListener(it.button.onClick, k);
                 foreach (var c in added) if (c != null) UnityEngine.Object.DestroyImmediate(c);
                 ctrl.marks = new GameObject[0]; ctrl.markCh = new int[0]; ctrl.markVal = new int[0];
-                ctrl.statusTexts = new Text[0]; ctrl.beatLamps = new GameObject[0]; ctrl.panelHandle = null; ctrl.panelCanvas = null; ctrl.panelSync = null;
+                ctrl.statusTexts = new Text[0]; ctrl.beatLamps = new GameObject[0]; ctrl.pickTexts = new Text[0]; ctrl.pickCam = new int[0]; ctrl.pickSlot = new int[0]; ctrl.panelHandle = null; ctrl.panelCanvas = null; ctrl.panelSync = null;
                 Finish(ctrl);
                 return false;
             }
