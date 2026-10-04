@@ -491,7 +491,7 @@ namespace Washitsu.StageKobo.Editor
         static Vector4 Lin(Color c) { var l = c.linear; return new Vector4(l.r, l.g, l.b, 1f); }
 
         /// <summary>背景（BACKDROP）のいちばん奥（three の Z）</summary>
-        static float BackdropBackZ(SKContext ctx, out bool found)
+        public static float BackdropBackZ(SKContext ctx, out bool found)
         {
             found = false;
             float z = 1e9f;

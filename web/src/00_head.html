@@ -111,12 +111,24 @@ details.sec>.body{padding:4px 10px 10px}
 #hint{position:absolute;left:12px;top:52px;color:#aab3e6;font-size:11px;background:rgba(12,14,30,.6);padding:6px 9px;border-radius:8px;line-height:1.6;z-index:2;pointer-events:none}
 #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--mint);background:var(--bg);z-index:10}
 /* VJ リモコン（プレビュー部分は透明にして WebGL で描くので backdrop-filter は使わない） */
-#vjRemote{position:absolute;z-index:4;width:346px;max-height:calc(100% - 62px);display:flex;flex-direction:column;border:1px solid #7a4aa8;border-radius:16px;box-shadow:0 10px 34px rgba(0,0,0,.55);user-select:none}
+#vjRemote{position:absolute;z-index:4;width:780px;max-width:calc(100% - 12px);max-height:calc(100% - 62px);display:flex;flex-direction:column;border:1px solid #7a4aa8;border-radius:16px;box-shadow:0 10px 34px rgba(0,0,0,.55);user-select:none}
 #vjRemote .vjHead{display:flex;align-items:center;gap:4px;padding:7px 8px;background:rgba(30,14,46,.96);border-radius:15px 15px 0 0;cursor:grab;flex-wrap:wrap;touch-action:none;border-bottom:1px solid #4a2d6e}
 #vjRemote.min .vjHead{border-radius:15px;border-bottom:none}
 #vjRemote.min .vjMain{display:none}
-#vjRemote .vjMain{display:flex;flex:1 1 auto;min-height:0}
-#vjRemote .vjLeft{flex:0 0 344px;width:344px;display:flex;flex-direction:column;min-height:0}
+#vjRemote .vjMain{display:grid;grid-template-columns:minmax(0,1fr) 300px minmax(0,1fr);flex:1 1 auto;min-height:0;background:rgba(20,11,34,.96);border-radius:0 0 15px 15px}
+#vjRemote .vjCol{display:flex;flex-direction:column;gap:5px;padding:6px 7px 8px;overflow-y:auto;min-height:0}
+#vjRemote .vjCol::-webkit-scrollbar{width:6px}#vjRemote .vjCol::-webkit-scrollbar-thumb{background:#45306a;border-radius:3px}
+#vjRemote .vjL{background:rgba(70,140,255,.06)}#vjRemote .vjR{background:rgba(255,110,200,.06);border-radius:0 0 15px 0}#vjRemote .vjL{border-radius:0 0 0 15px}
+#vjRemote .vjC{padding:0 0 8px;border-left:1px solid #4a2d6e;border-right:1px solid #4a2d6e}
+#vjRemote .vjC>.rmSec,#vjRemote .vjC>.vjPads,#vjRemote .vjC>.vjInfo{margin:0 7px}
+#vjRemote .vjDeckT{font-size:12px;font-weight:bold;letter-spacing:.08em}#vjRemote .vjDeckT.a{color:#8fd1ff}#vjRemote .vjDeckT.b{color:#ff9fdc}
+#vjRemote .vjInfo{font-size:11.5px;line-height:1.5;background:rgba(0,0,0,.35);border:1px solid #33275a;border-radius:8px;padding:5px 7px;white-space:pre-line;color:#e7e3ff}
+#vjRemote .vjInfo small{color:var(--dim);font-size:10.5px}
+#vjRemote .vjInfo.shown{border-color:var(--mint);box-shadow:0 0 8px rgba(127,245,214,.35)}
+#vjRemote .vjInfo.c{font-size:11px;margin-top:6px}
+#vjRemote .rb.tab{font-size:11px}
+#vjRemote .rb.gen.a:not(.on){background:#1b2c55}#vjRemote .rb.gen.b:not(.on){background:#4a1f45}
+#vjRemote .rb.deckA:not(.on){background:#1b2c55}#vjRemote .rb.deckB:not(.on){background:#4a1f45}
 #vjRemote .vjTitle{font-size:12px;letter-spacing:.22em;color:var(--pink);font-weight:bold;margin-right:2px}
 #vjRemote .rmSep{width:1px;height:18px;background:#4a3470;margin:0 2px}
 #vjRemote .rmFill{flex:1}
@@ -134,7 +146,7 @@ details.sec>.body{padding:4px 10px 10px}
 #vjRemote .rmBtns{display:flex;flex-wrap:wrap;gap:3px;align-items:center}
 #vjRemote .rmBreak{flex-basis:100%;height:1px}
 #vjRemote .rmLbl2{font-size:10.5px;color:var(--dim);margin-right:2px}
-#vjRemote .vjPads{display:grid;grid-template-columns:repeat(6,1fr);gap:4px}
+#vjRemote .vjPads{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:5px}
 #vjRemote .rb.pad{display:flex;flex-direction:column;align-items:center;gap:1px;padding:7px 2px 5px;font-size:11px;background:linear-gradient(160deg,#3a2466,#20163f);border-color:#6a4aa8;border-radius:9px;touch-action:none}
 #vjRemote .rb.pad small{font-size:9.5px;color:#b9a6ea;font-family:monospace}
 #vjRemote .rb.pad.hit{background:linear-gradient(160deg,#ff8fd0,#8f6bff);color:#fff;box-shadow:0 0 14px rgba(255,143,208,.8)}
@@ -162,7 +174,7 @@ body.vjOpen #hint{display:none}
 /* VJ 出力モード（全画面） */
 body.vjFull #panel,body.vjFull #topbar,body.vjFull #remote,body.vjFull #pipLabel,body.vjFull #hint{display:none!important}
 body.vjFull #vjRemote .vjPrev{display:none}
-body.vjFull #vjRemote .vjBody{border-top:1px solid #4a2d6e}
+body.vjFull #vjRemote .vjMain{border-top:1px solid #4a2d6e}
 body.vjFull #vjRemote{opacity:.94}
 body.vjHideUI #vjRemote{display:none}
 body.vjFull.vjHideUI #view{cursor:none}

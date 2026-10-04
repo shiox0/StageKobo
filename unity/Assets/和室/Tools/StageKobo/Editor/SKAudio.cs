@@ -26,6 +26,8 @@ namespace Washitsu.StageKobo.Editor
         const string ALPrefabPath = "Packages/com.llealloo.audiolink/Runtime/AudioLink.prefab";
         const string YamaPrefabGuid = "0ca92d0fbf2bf3944bfeef01f4977da5";   // YamaPlayer.prefab（画面・操作パネル付き）
 
+        public const string SpatialTypeName = "VRC.SDK3.Components.VRCSpatialAudioSource";
+
         public static Type ALType { get { return SKUdon.FindType(ALTypeName); } }
         public static Type YamaType { get { return SKUdon.FindType(YamaTypeName); } }
         public static bool ALInstalled { get { return ALType != null; } }
@@ -57,15 +59,24 @@ namespace Washitsu.StageKobo.Editor
 
         // ------------------------------------------------------------------ 組み立てのとき
 
-        /// <summary>組み立ての最後に呼ぶ：マテリアルに強さを入れて、AudioLink を用意し、YamaPlayer をつなぐ</summary>
+        /// <summary>組み立ての最後に呼ぶ：マテリアルに強さを入れて、AudioLink を用意し、YamaPlayer をつなぐ。YamaPlayer の音をステージから会場ぜんたいへ</summary>
         public static void Setup(SKContext ctx)
         {
             var cfg = ctx.cfg;
+            if (cfg.yamaSound && YamaInstalled)
+            {
+                try { SpreadSound(ctx.Log, ctx.root); }
+                catch (Exception e)
+                {
+                    ctx.Log("⚠ YamaPlayer の音の設定でエラー：" + e.Message + "（インポーターの「YamaPlayer の音を会場に広げる」でやり直せます）");
+                    Debug.LogException(e);
+                }
+            }
             float amount = ctx.audio ? Mathf.Clamp01(cfg.alAmount) : 0f;
             int n = ApplyMaterials(ctx, amount);
             if (!ctx.audio) return;
             ctx.Log("音に反応（AudioLink）：強さ " + Mathf.RoundToInt(amount * 100f) + "%（マテリアル " + n + " 個）" +
-                (ctx.udon ? "。リモコン・照明卓の「音に反応」で ON/OFF できます" : ""));
+                (ctx.udon ? "。操作パネルの「照明」タブ「曲の音に反応」で ON/OFF できます" : ""));
             if (!ALInstalled)
             {
                 ctx.Log("⚠ AudioLink のパッケージが入っていないので、まだ音には反応しません。VRChat Creator Companion（VCC）で AudioLink を追加して、" +
@@ -177,6 +188,170 @@ namespace Washitsu.StageKobo.Editor
             Selection.activeGameObject = go;
             EditorGUIUtility.PingObject(go);
             return go;
+        }
+
+        // ------------------------------------------------------------------ YamaPlayer の音を会場ぜんたいへ
+
+        /// <summary>音を鳴らす場所と、届く距離</summary>
+        public class SoundPlace
+        {
+            public Vector3 pos;
+            public float near, far, radius;
+            public string from;
+        }
+
+        /// <summary>シーンのステージ（StageKobo_～。いちばん新しく組み立てたもの）。無ければ null</summary>
+        public static GameObject FindStageRoot()
+        {
+            GameObject best = null;
+            foreach (var go in SceneManager.GetActiveScene().GetRootGameObjects())
+            {
+                if (!go.name.StartsWith("StageKobo_") || go.name == SKFx.ObjectName) continue;
+                if (FindDeep(go.transform, "STAGE") == null) continue;
+                if (best == null || go.transform.GetSiblingIndex() > best.transform.GetSiblingIndex()) best = go;
+            }
+            return best;
+        }
+
+        static Transform FindDeep(Transform t, string name)
+        {
+            if (t.name == name) return t;
+            foreach (Transform c in t) { var r = FindDeep(c, name); if (r != null) return r; }
+            return null;
+        }
+
+        static Bounds? RendererBounds(Transform t)
+        {
+            Bounds? b = null;
+            foreach (var r in t.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r is ParticleSystemRenderer) continue;
+                if (b == null) b = r.bounds; else { var x = b.Value; x.Encapsulate(r.bounds); b = x; }
+            }
+            return b;
+        }
+
+        /// <summary>
+        /// ステージを見て、音を鳴らす場所と届く距離を決める（ワールドの座標で見るので、軸の向きに関係なく使える）
+        /// ・ステージのスピーカー（ラインアレイ・スピーカースタック）があれば、そのまん中。左右の間隔の半分を「音の広がり」（Volumetric Radius）に
+        /// ・無ければステージのまん中の少し上。広がりはステージの幅の半分
+        /// ・届く距離（Far）は、鳴らす場所から会場（組み立てたもの全部）のいちばん遠い角まで ×1.15（30〜250m）。Near（同じ大きさで聞こえる距離）は Far の 35%（6〜60m）
+        /// </summary>
+        public static SoundPlace Measure(GameObject root)
+        {
+            var p = new SoundPlace();
+            var assets = FindDeep(root.transform, "ASSETS");
+            var centers = new List<Vector3>();
+            if (assets != null)
+                foreach (Transform u in assets)
+                {
+                    if (!u.name.StartsWith("line_array_") && !u.name.StartsWith("speaker_stack_")) continue;
+                    if (!u.gameObject.activeInHierarchy) continue;
+                    foreach (Transform w in u) { var b = RendererBounds(w); if (b.HasValue) centers.Add(b.Value.center); }
+                }
+            var stage = FindDeep(root.transform, "STAGE");
+            var sb = stage != null ? RendererBounds(stage) : null;
+            if (centers.Count > 0)
+            {
+                foreach (var c in centers) p.pos += c;
+                p.pos /= centers.Count;
+                foreach (var c in centers) p.radius = Mathf.Max(p.radius, Vector2.Distance(new Vector2(c.x, c.z), new Vector2(p.pos.x, p.pos.z)));
+                p.from = "ステージのスピーカー " + centers.Count + " 台のまん中";
+            }
+            else if (sb.HasValue)
+            {
+                p.pos = sb.Value.center; p.pos.y = sb.Value.max.y + 2f;
+                p.radius = Mathf.Max(sb.Value.extents.x, sb.Value.extents.z) * 0.6f;
+                p.from = "ステージのまん中（スピーカーのアセットが無いため）";
+            }
+            else
+            {
+                p.pos = root.transform.position + Vector3.up * 3f; p.radius = 4f;
+                p.from = "ステージの場所";
+            }
+            var all = RendererBounds(root.transform);
+            float far = 30f;
+            if (all.HasValue)
+            {
+                var a = all.Value;
+                foreach (var x in new[] { a.min.x, a.max.x })
+                    foreach (var z in new[] { a.min.z, a.max.z })
+                        far = Mathf.Max(far, Vector2.Distance(new Vector2(x, z), new Vector2(p.pos.x, p.pos.z)) * 1.15f);
+            }
+            p.far = Mathf.Clamp(far, 30f, 250f);
+            p.near = Mathf.Clamp(p.far * 0.35f, 6f, 60f);
+            p.radius = Mathf.Clamp(p.radius, 1f, p.near);
+            return p;
+        }
+
+        /// <summary>
+        /// YamaPlayer の音の出口（Controller の _audioSources ＝ 動画の音が出る AudioSource）を、ステージの上に動かして、会場ぜんたいに届く距離にする。
+        /// 新しい AudioSource は作らない（YamaPlayer の音量・ミュート・AudioLink はそのまま効く）。インポーターのボタンからも呼ぶ（ステージを作り直さずに）
+        /// </summary>
+        public static bool SpreadSound(Action<string> log, GameObject stageRoot)
+        {
+            var yt = YamaType;
+            if (yt == null) { log("⚠ YamaPlayer が入っていません"); return false; }
+            if (stageRoot == null) { log("⚠ シーンにステージ（StageKobo_～）がありません。先にインポーターで組み立ててください"); return false; }
+            var ctrls = InScene(yt);
+            if (ctrls.Count == 0)
+            {
+                log("YamaPlayer がシーンに無いので、音の範囲はまだ設定していません（YamaPlayer を置いたら、インポーターの「YamaPlayer の音を会場に広げる」を押してください）");
+                return false;
+            }
+            var place = Measure(stageRoot);
+            var spT = SKUdon.FindType(SpatialTypeName);
+            int n = 0;
+            foreach (var c in ctrls)
+            {
+                var so = new SerializedObject(c);
+                var arr = so.FindProperty("_audioSources");
+                var srcs = new List<AudioSource>();
+                if (arr != null && arr.isArray)
+                    for (int i = 0; i < arr.arraySize; i++)
+                    {
+                        var a = arr.GetArrayElementAtIndex(i).objectReferenceValue as AudioSource;
+                        if (a != null && !srcs.Contains(a)) srcs.Add(a);
+                    }
+                if (srcs.Count == 0)
+                {
+                    log("⚠ YamaPlayer「" + c.gameObject.name + "」の音の出口（AudioSource）が見つかりませんでした（YamaPlayer のバージョンが違うかもしれません）");
+                    continue;
+                }
+                foreach (var a in srcs)
+                {
+                    Undo.RecordObject(a.transform, "YamaPlayer の音をステージへ");
+                    a.transform.position = place.pos;
+                    Undo.RecordObject(a, "YamaPlayer の音の範囲");
+                    a.minDistance = place.near;
+                    a.maxDistance = place.far;
+                    PrefabUtility.RecordPrefabInstancePropertyModifications(a.transform);
+                    PrefabUtility.RecordPrefabInstancePropertyModifications(a);
+                    if (spT == null) continue;   // VRChat SDK が無い（Unity だけで試すとき）
+                    var sp = a.GetComponent(spT);
+                    if (sp == null) sp = Undo.AddComponent(a.gameObject, spT);
+                    var sso = new SerializedObject(sp);
+                    SetF(sso, "Far", place.far);
+                    SetF(sso, "Near", place.near);
+                    SetF(sso, "VolumetricRadius", place.radius);
+                    var en = sso.FindProperty("EnableSpatialization");
+                    if (en != null) en.boolValue = true;   // ステージの方から聞こえる（近くでは広がりの中なので、どこからでも同じ）
+                    sso.ApplyModifiedProperties();
+                }
+                n++;
+                if (c.gameObject.scene.IsValid()) EditorSceneManager.MarkSceneDirty(c.gameObject.scene);
+            }
+            if (n == 0) return false;
+            log("YamaPlayer の音：" + place.from + "から鳴らします（" + n + " 台）。まわり " + Mathf.RoundToInt(place.near) + "m は同じ大きさ、" +
+                Mathf.RoundToInt(place.far) + "m 先まで届きます（会場の大きさから自動）" +
+                "\n　※ 音の出口（YamaPlayer の中の Audio Source）をステージの上に動かしています。YamaPlayer を動かしたら、インポーターの「YamaPlayer の音を会場に広げる」を押し直してください");
+            return true;
+        }
+
+        static void SetF(SerializedObject so, string name, float v)
+        {
+            var p = so.FindProperty(name);
+            if (p != null) p.floatValue = v;
         }
 
         // ------------------------------------------------------------------ マテリアル

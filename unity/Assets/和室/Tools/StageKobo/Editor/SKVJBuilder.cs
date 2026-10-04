@@ -21,6 +21,8 @@ namespace Washitsu.StageKobo.Editor
         public const int V_PAD = 100, V_BLACK = 101, V_EDIT = 102, V_TAKE = 103, V_CUT = 104, V_FADELEN = 105, V_XFAUTO = 106, V_GEN = 107, V_SPEED = 108, V_COUNT = 109, V_ZOOM = 110,
             V_IMG = 111, V_IMGRATE = 112, V_PAL = 113, V_CMODE = 114, V_HUE = 115, V_FX = 116, V_MIRROR = 117, V_KALE = 118, V_RATE = 119, V_PUMP = 120, V_AMT = 121, V_BRIGHT = 122,
             V_TEXTON = 123, V_TEXTANIM = 124, V_AUTO = 125, V_AUTOBARS = 126, V_PRESET = 127, V_SLOT = 128, V_BACK = 129, V_MAP = 130;
+        // 操作パネルの「デッキを決めた操作」：動作番号 + 1000 = デッキA、+ 2000 = デッキB
+        public const int DECK_A = 1000, DECK_B = 2000;
     }
 
     /// <summary>LED の面1枚（VJ 映像を映せるもの）</summary>
@@ -65,7 +67,7 @@ namespace Washitsu.StageKobo.Editor
             var vj = J.O(ctx.state, "vj");
             if (defs == null || vj == null)
             {
-                ctx.Log("⚠ この JSON には VJ の情報がありません（すてーじ工房 v0.7 以降で書き出し直すと、VJ と VJ 卓が作られます）");
+                ctx.Log("⚠ この JSON には VJ の情報がありません（すてーじ工房 v0.7 以降で書き出し直すと、VJ と操作パネルの VJ タブが作られます）");
                 return;
             }
             var info = new SKVJInfo();
@@ -305,7 +307,7 @@ namespace Washitsu.StageKobo.Editor
                 EditorUtility.SetDirty(m);
             }
             ctx.vjOutput = info.output;
-            ctx.Log("VJ 映像を貼りました：背景の LED " + nb + " 枚" + (udon ? "（VJ卓の「背景LED」で切り替え）" : backOn ? "（いつも VJ）" : "（書き出したときに「背景LED：映さない」だったので VJ は映しません）") +
+            ctx.Log("VJ 映像を貼りました：背景の LED " + nb + " 枚" + (udon ? "（操作パネルの「モニター」タブで切り替え）" : backOn ? "（いつも VJ）" : "（書き出したときに「背景LED：映さない」だったので VJ は映しません）") +
                     "・カメラのモニター " + nm + " 台（メイン・サブそれぞれ「VJ映像」で切り替え）・VJ のモニター " + na + " 台");
         }
 

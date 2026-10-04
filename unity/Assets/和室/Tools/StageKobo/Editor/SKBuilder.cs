@@ -23,7 +23,7 @@ namespace Washitsu.StageKobo.Editor
         public bool wash = true, crowd = true, performers = true, probe = true;
         /// <summary>ブラウザ版の VJ（デッキA/B・エフェクト）を LED モニター・背景 LED に映す</summary>
         public bool vj = true;
-        /// <summary>ステージ裏の操作卓（照明卓・VJ卓。UdonSharp 版のときだけ）</summary>
+        /// <summary>ステージ裏の操作パネル（手前と同じ・プレビュー付き。UdonSharp 版のときだけ）</summary>
         public bool desks = true;
         /// <summary>UdonSharp 版のリモコン（全員に同期・テンポ変更）。UdonSharp が無いときは無視される</summary>
         public bool udon = true;
@@ -33,6 +33,8 @@ namespace Washitsu.StageKobo.Editor
         public float alAmount = 0.7f;
         /// <summary>シーンの YamaPlayer の音を AudioLink に送るように設定する</summary>
         public bool yama = true;
+        /// <summary>シーンの YamaPlayer の音を、ステージ（スピーカー）から会場ぜんたいに届くようにする</summary>
+        public bool yamaSound = true;
         /// <summary>演者を照らすスポットライト（本物の Spot Light 2 灯。UdonSharp 版は登録した人を追う）</summary>
         public bool spots = true;
         /// <summary>スポットライトの明るさ（1 = ふつう）</summary>
@@ -49,7 +51,7 @@ namespace Washitsu.StageKobo.Editor
         // ACT_UP：カメラのアップで顔を追う人に「押した人」を登録（val 0 = カメラ1、1 = カメラ2、3 = 外す）
         // ACT_AUDIO：音に反応（AudioLink）の ON / OFF（val 1 = ON、0 = OFF）
         // ACT_SPOT：演者を照らすスポットに「押した人」を登録（val 0 = スポット1、1 = スポット2、3 = 固定に戻す）／ACT_SPOTON：スポット ON / OFF
-        public const int ACT_BPM = 20, ACT_SPEED = 21, ACT_STROBE = 22, ACT_FX = 23, ACT_UP = 24, ACT_AUDIO = 25, ACT_SPOT = 26, ACT_SPOTON = 27;
+        public const int ACT_BPM = 20, ACT_SPEED = 21, ACT_STROBE = 22, ACT_FX = 23, ACT_UP = 24, ACT_AUDIO = 25, ACT_SPOT = 26, ACT_SPOTON = 27, ACT_HOME = 28;
         public const int MODE_CONST = 0, MODE_BEAT = 1, MODE_MOVE = 2, MODE_TIME = 3;
     }
 
@@ -213,10 +215,10 @@ namespace Washitsu.StageKobo.Editor
                 if (cfg.fx) BuildFX(ctx);
                 EditorUtility.DisplayProgressBar("すてーじ工房", "演出を Animator に焼き込んでいます…", 0.65f);
                 if (cfg.anim) SKAnimBaker.Bake(ctx);
-                EditorUtility.DisplayProgressBar("すてーじ工房", "リモコン…", 0.9f);
-                if (cfg.remote && cfg.anim) SKRemoteBuilder.Build(ctx);
+                EditorUtility.DisplayProgressBar("すてーじ工房", "VJ…", 0.9f);
                 SKVJBuilder.Finish(ctx);
-                if (cfg.desks) { EditorUtility.DisplayProgressBar("すてーじ工房", "ステージ裏の操作卓…", 0.95f); SKDeskBuilder.Build(ctx); }
+                // 操作パネル（v0.11〜：手前＝持ち運べる・裏＝プレビュー付き。以前のリモコン・ステージ裏の卓の代わり）
+                if ((cfg.remote || cfg.desks) && cfg.anim) { EditorUtility.DisplayProgressBar("すてーじ工房", "操作パネル…", 0.95f); SKPanelBuilder.Build(ctx); }
                 EditorUtility.DisplayProgressBar("すてーじ工房", "AudioLink・YamaPlayer…", 0.98f);
                 SKAudio.Setup(ctx);
 

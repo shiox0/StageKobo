@@ -45,6 +45,7 @@ namespace Washitsu.StageKobo
         public const int ACT_AUDIO = 25;    // 曲の音に反応（AudioLink）：val 1 = ON、0 = OFF
         public const int ACT_SPOT = 26;     // 演者を照らすスポットに「押した人」を登録（val 0 = スポット1、1 = スポット2、3 = 固定に戻す）
         public const int ACT_SPOTON = 27;   // スポットライト：val 1 = ON、0 = OFF
+        public const int ACT_HOME = 28;     // 持ち運べる操作パネルを元の場所に戻す
         // ---- ステートの時間の合わせ方
         public const int MODE_CONST = 0;    // 止まっている（色の固定など）
         public const int MODE_BEAT = 1;     // 拍に合わせる（Tempo）
@@ -76,6 +77,15 @@ namespace Washitsu.StageKobo
         public int[] markVal;
         public Text statusText;
         public GameObject beatLamp;
+        // 操作パネル（v0.11〜：手前と裏に同じパネル。状態の文字・拍のランプはパネルの数だけ）
+        public Text[] statusTexts;
+        public GameObject[] beatLamps;
+        // 持ち運べる操作パネル：取っ手（VRC Pickup・VRC Object Sync）に、パネル（Canvas）が付いていく
+        public Transform panelHandle;
+        public Transform panelCanvas;
+        public Vector3 panelOffPos;
+        public Quaternion panelOffRot = Quaternion.identity;
+        public VRC.SDK3.Components.VRCObjectSync panelSync;
         // ステージ裏の照明卓（物理スイッチ）のランプ
         public Material deskMat;
         public int[] deskCh;
@@ -261,6 +271,12 @@ namespace Washitsu.StageKobo
         /// <summary>アバターの頭が動いたあと（IK のあと）に、焼き込んだカメラワークを上書きする</summary>
         public override void PostLateUpdate()
         {
+            // 持ち運べる操作パネル：取っ手に付いていく（パネルは取っ手の子にしない＝パネルの当たり判定で持ち上がらないように）
+            if (panelHandle != null && panelCanvas != null)
+            {
+                panelCanvas.position = panelHandle.TransformPoint(panelOffPos);
+                panelCanvas.rotation = panelHandle.rotation * panelOffRot;
+            }
             if (setupDone && sel != null) UpdateSpots();
             if (!setupDone || stageCams == null || sel == null || sel.Length != NCH || upDist == null || upFov == null || upSpeed == null) return;
             for (int k = 0; k < 2 && k < stageCams.Length; k++)
@@ -348,10 +364,15 @@ namespace Washitsu.StageKobo
             // シェーダーには 4096 拍で折り返して渡す（float の精度が落ちないように。模様の周期は 4096 を割り切るので継ぎ目は出ない）
             VRCShader.SetGlobalFloat(idBeat, (float)(localBeat % 4096.0));
 
-            if (beatLamp != null)
             {
                 bool on = localBeat % 1.0 < 0.2;
-                if (on != lampOn) { lampOn = on; beatLamp.SetActive(on); }
+                if (on != lampOn)
+                {
+                    lampOn = on;
+                    if (beatLamp != null) beatLamp.SetActive(on);
+                    if (beatLamps != null)
+                        for (int i = 0; i < beatLamps.Length; i++) if (beatLamps[i] != null) beatLamps[i].SetActive(on);
+                }
             }
             if (Time.time >= nextResync)
             {
@@ -368,6 +389,16 @@ namespace Washitsu.StageKobo
         {
             Setup();
             if (sel == null || sel.Length != NCH) ResetSynced();
+            if (ch == ACT_HOME)
+            {
+                // 持ち運べるパネルを元の場所へ（パネルの位置は VRC Object Sync で全員に同期）
+                if (panelSync != null)
+                {
+                    Networking.SetOwner(Networking.LocalPlayer, panelSync.gameObject);
+                    panelSync.Respawn();
+                }
+                return;
+            }
             if (ch == ACT_STROBE)
             {
                 SendCustomNetworkEvent(NetworkEventTarget.All, nameof(Strobe));
@@ -795,6 +826,14 @@ namespace Washitsu.StageKobo
 
         string SpotName(int id) { return id < 0 ? "固定" : PlayerName(id); }
 
+        /// <summary>モニターがいま映しているもの（ステート名の最後が _VJ なら VJ）</summary>
+        string MonLabel(int c)
+        {
+            if (chCount[c] <= 0) return "-";
+            string n = stNames[chStart[c] + Clamp(sel[c], c)];
+            return n.EndsWith("_VJ") ? "VJ" : "カメラ";
+        }
+
         string SpeedLabel()
         {
             if (speedMul < 0.75f) return "½";
@@ -812,14 +851,18 @@ namespace Washitsu.StageKobo
                     bool on = IsOn(markCh[k], markVal[k]);
                     if (marks[k].activeSelf != on) marks[k].SetActive(on);
                 }
-            if (statusText != null)
+            bool many = statusTexts != null && statusTexts.Length > 0;
+            if (statusText != null || many)
             {
                 VRCPlayerApi o = Networking.GetOwner(gameObject);
                 string who = Utilities.IsValid(o) ? o.displayName : "-";
-                statusText.text = "BPM " + Mathf.RoundToInt(bpm).ToString() + "   動きの速さ ×" + SpeedLabel() + "   さいごに操作した人：" + who
-                    + "\nアップで追う人：カメラ1 " + PlayerName(up1) + " ／ カメラ2 " + PlayerName(up2)
+                string mon = chCount != null && chCount[CH_MONITOR] > 0 ? "モニター：メイン " + MonLabel(CH_MONITOR) + (chCount[CH_MONITOR2] > 0 ? " ／ サブ " + MonLabel(CH_MONITOR2) : "") + "   " : "";
+                string text = "BPM " + Mathf.RoundToInt(bpm).ToString() + "   動きの速さ ×" + SpeedLabel() + "   さいごに操作した人：" + who
+                    + "\n" + mon + "アップで追う人：カメラ1 " + PlayerName(up1) + " ／ カメラ2 " + PlayerName(up2)
                     + (hasAudio ? "   音に反応 " + (audioOn ? "ON" : "OFF") : "")
                     + (spots != null && spots.Length > 0 ? "\nスポット：1 " + SpotName(sp1) + " ／ 2 " + SpotName(sp2) + (spotOn ? "" : "（OFF）") : "");
+                if (statusText != null) statusText.text = text;
+                if (many) for (int i = 0; i < statusTexts.Length; i++) if (statusTexts[i] != null) statusTexts[i].text = text;
             }
         }
     }

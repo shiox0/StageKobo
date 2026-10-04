@@ -29,6 +29,23 @@ namespace Washitsu.StageKobo.Editor
             public GameObject mark;
         }
 
+        /// <summary>操作パネル（UI）のボタン1個。kind 0 = 照明（StageKoboController）、1 = VJ（StageKoboVJ）</summary>
+        public class PanelItem
+        {
+            public Button button;
+            public int kind, ch, val;
+            public GameObject mark;
+        }
+
+        /// <summary>操作パネルの文字・ランプ・持ち運び（パネルの数だけ）</summary>
+        public class PanelParts
+        {
+            public List<Text> status = new List<Text>(), infoA = new List<Text>(), infoB = new List<Text>(), infoC = new List<Text>();
+            public List<GameObject> lamps = new List<GameObject>();
+            public Transform handle, canvas, backCenter;
+            public Component sync;
+        }
+
         /// <summary>ステージ裏の卓のボタン1個</summary>
         public class DeskButton
         {
@@ -237,6 +254,89 @@ namespace Washitsu.StageKobo.Editor
                 Debug.LogException(e);
                 try { Cleanup(items); } catch (Exception e2) { Debug.LogException(e2); }
                 ctrl.marks = new GameObject[0]; ctrl.markCh = new int[0]; ctrl.markVal = new int[0]; ctrl.statusText = null; ctrl.beatLamp = null;
+                Finish(ctrl);
+                return false;
+            }
+#else
+            return false;
+#endif
+        }
+
+        /// <summary>
+        /// 操作パネル（手前・裏の 2 枚）のボタンを配線する：OnClick → UdonBehaviour.SendCustomEvent("Press")（StageKoboButton）。
+        /// 印は照明のボタンは StageKoboController、VJ のボタンは StageKoboVJ が ON/OFF する。失敗したら false（呼び出し側が Animator だけの版に戻す）
+        /// </summary>
+        public static bool WirePanels(SKContext ctx, List<PanelItem> items, PanelParts parts)
+        {
+#if STAGEKOBO_UDON
+            var ctrl = EnsureController(ctx) as StageKoboController;
+            if (ctrl == null) return false;
+            var vj = ctx.vj != null ? ctx.vj.ctrl as StageKoboVJ : null;
+            var added = new List<Component>();
+            try
+            {
+                var m0 = items.Where(i => i.mark != null && i.kind == 0).ToList();
+                ctrl.marks = m0.Select(i => i.mark).ToArray();
+                ctrl.markCh = m0.Select(i => i.ch).ToArray();
+                ctrl.markVal = m0.Select(i => i.val).ToArray();
+                ctrl.statusText = null; ctrl.beatLamp = null;
+                ctrl.statusTexts = parts.status.ToArray();
+                ctrl.beatLamps = parts.lamps.ToArray();
+                ctrl.deskMat = null; ctrl.deskCh = new int[0]; ctrl.deskVal = new int[0];
+                ctrl.panelHandle = parts.handle; ctrl.panelCanvas = parts.canvas;
+                if (parts.handle != null && parts.canvas != null)
+                {
+                    ctrl.panelOffPos = parts.handle.InverseTransformPoint(parts.canvas.position);
+                    ctrl.panelOffRot = Quaternion.Inverse(parts.handle.rotation) * parts.canvas.rotation;
+                }
+                ctrl.panelSync = parts.sync as VRC.SDK3.Components.VRCObjectSync;
+                if (vj != null) ctrl.vj = vj;
+                Finish(ctrl);
+                if (vj != null)
+                {
+                    var m1 = items.Where(i => i.mark != null && i.kind == 1).ToList();
+                    vj.uiMarks = m1.Select(i => i.mark).ToArray();
+                    vj.uiAct = m1.Select(i => i.ch).ToArray();
+                    vj.uiVal = m1.Select(i => i.val).ToArray();
+                    vj.infoA = parts.infoA.ToArray(); vj.infoB = parts.infoB.ToArray(); vj.infoC = parts.infoC.ToArray();
+                    // 卓（物理スイッチ）はもう作らない
+                    vj.deskMats = new Material[0]; vj.btnDesk = new int[0]; vj.btnSlot = new int[0]; vj.btnKind = new int[0]; vj.btnAct = new int[0]; vj.btnVal = new int[0];
+                    vj.deskCenter = parts.backCenter;   // 裏のパネルの近くにいる人は、確認用のプレビューのためにデッキ A・B を両方描く
+                    var defs = J.O(ctx.data, "vjDefs");
+                    vj.genNames = J.L(defs, "gensFull").Select(x => x as string ?? "").ToArray();
+                    vj.cmodeNames = J.L(defs, "colorModeNames").Select(x => x as string ?? "").ToArray();
+                    vj.mirrorNames = J.L(defs, "mirrors").Select(x => x as string ?? "").ToArray();
+                    vj.fxNames = ctx.vj.fxNames ?? new string[0];
+                    Finish(vj);
+                }
+                int wired = 0;
+                foreach (var it in items)
+                {
+                    if (it.button == null || it.ch < 0) continue;
+                    var sb = AddUSharp(it.button.gameObject, typeof(StageKoboButton)) as StageKoboButton;
+                    if (sb == null) throw new Exception("StageKoboButton を追加できませんでした");
+                    added.Add(sb);
+                    sb.controller = ctrl; sb.vj = it.kind == 1 ? vj : null; sb.ch = it.ch; sb.val = it.val;
+                    sb.deskMat = null;
+                    Finish(sb);
+                    var ub = Backing(sb);
+                    if (ub == null) throw new Exception("UdonBehaviour が見つかりません");
+                    added.Add(ub);
+                    var del = (UnityAction<string>)Delegate.CreateDelegate(typeof(UnityAction<string>), ub, "SendCustomEvent");
+                    UnityEventTools.AddStringPersistentListener(it.button.onClick, del, "Press");
+                    wired++;
+                }
+                ctx.Log("UdonSharp：操作パネルのボタン " + wired + " 個を配線しました");
+                return true;
+            }
+            catch (Exception e)
+            {
+                ctx.Log("⚠ 操作パネルの配線でエラー：" + e.Message);
+                Debug.LogException(e);
+                foreach (var it in items) if (it.button != null) for (int k = it.button.onClick.GetPersistentEventCount() - 1; k >= 0; k--) UnityEventTools.RemovePersistentListener(it.button.onClick, k);
+                foreach (var c in added) if (c != null) UnityEngine.Object.DestroyImmediate(c);
+                ctrl.marks = new GameObject[0]; ctrl.markCh = new int[0]; ctrl.markVal = new int[0];
+                ctrl.statusTexts = new Text[0]; ctrl.beatLamps = new GameObject[0]; ctrl.panelHandle = null; ctrl.panelCanvas = null; ctrl.panelSync = null;
                 Finish(ctrl);
                 return false;
             }

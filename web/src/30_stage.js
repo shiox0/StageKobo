@@ -1,6 +1,6 @@
 
 /* =====================================================================
-   ステージ本体（メイン形状・花道・サブステージ・正面階段・ひな壇・センターサークル）
+   ステージ本体（メイン形状・花道・サブステージ・階段（正面・横・後ろ）・ひな壇・センターサークル）
    ===================================================================== */
 const STAGE_INFO = { H: 1.2, pieces: [], upper: null, front: () => 4 };
 let reflector = null;
@@ -173,6 +173,48 @@ function buildStairs(o) {
   return g;
 }
 
+/* 外形 P を z = 一定 の線で切ったときの、いちばん外の x（dir = +1 右 / -1 左）。切れなければ null */
+function outlineEdgeX(P, z, dir) {
+  let best = null;
+  for (let i = 0, n = P.length; i < n; i++) {
+    const [x1, z1] = P[i], [x2, z2] = P[(i + 1) % n];
+    if ((z1 > z) === (z2 > z) || z1 === z2) continue;
+    const x = x1 + (x2 - x1) * (z - z1) / (z2 - z1);
+    if (best === null || x * dir > best * dir) best = x;
+  }
+  return best;
+}
+/* 横・後ろの階段の置き場所。段の奥（ステージ側）を外形にぴったり付ける。
+   横 = 客席から見て左（-x）・右（+x）の辺に、後ろ = 奥の辺に。高さはその場所の床（ひな壇の上ならひな壇の高さ） */
+function sideStairsPlan(st, L) {
+  const sp = st.steps, H = Math.max(0.2, st.height), out = [];
+  const P = L.pieces[0].P, hd = st.depth / 2;
+  const w = clamp(sp.sideWidth ?? 2.4, 0.6, 20);
+  const side = sp.side || 'none';
+  if (side !== 'none') {
+    // 前後の位置：ステージの奥行の中に収める（丸いステージは外形が切れる所まで）
+    let zc = clamp(sp.sideZ ?? 0, -hd + w / 2, hd - w / 2);
+    for (const dir of side === 'both' ? [-1, 1] : side === 'left' ? [-1] : [1]) {
+      const xs = [zc - w / 2, zc, zc + w / 2].map(z => outlineEdgeX(P, z, dir)).filter(x => x !== null);
+      if (!xs.length) continue;
+      const x = dir > 0 ? Math.min(...xs) : Math.max(...xs);   // いちばん内側（段がステージから浮かない）
+      out.push({ name: 'Stage_SideStairs', w, h: H, x: x - dir * 0.01, z: zc, ry: dir > 0 ? Math.PI / 2 : -Math.PI / 2 });
+    }
+  }
+  const back = sp.back || 'none';
+  if (back !== 'none') {
+    const hw = st.width / 2;
+    const xs = back === 'sides' ? [-1, 1].map(k => k * clamp(sp.backX ?? 4, 0, hw - w / 2)) : [0];
+    const up = st.upper;
+    for (const x of xs) {
+      // ひな壇と重なる所はひな壇の高さまで
+      const onUpper = up.on && Math.abs(x) < Math.min(up.width, st.width) / 2;   // 階段のまん中がひな壇の幅の中
+      out.push({ name: 'Stage_BackStairs', w, h: H + (onUpper ? up.height : 0), x, z: -hd + 0.01, ry: Math.PI });
+    }
+  }
+  return out;
+}
+
 function buildStage() {
   if (reflector) { reflector.dispose(); reflector = null; }
   clearGroup(G.stage);
@@ -217,15 +259,20 @@ function buildStage() {
     if (top) { const m = new THREE.Mesh(top, em); m.name = 'StageEdgeLight'; G.stage.add(m); }
     if (st.edgeBottom) { const bot = ribbonGeo(segs, 0.04, 0.06); if (bot) { const m = new THREE.Mesh(bot, em); m.name = 'StageEdgeLightBottom'; G.stage.add(m); } }
   }
-  // 正面階段
+  // 階段（正面・横・後ろ）
   const sp = st.steps;
+  const stairOpts = (w, h) => ({ width: w, count: sp.count, height: h, tread: sp.tread, color: sp.color, led: sp.led, led1: sp.led1, led2: sp.led2 });
   if (sp.on) {
     const xs = sp.pos === 'sides' ? [-sp.sideX, sp.sideX] : [0];
     for (const x of xs) {
-      const s = buildStairs({ width: sp.width, count: sp.count, height: H, tread: sp.tread, color: sp.color, led: sp.led, led1: sp.led1, led2: sp.led2 });
+      const s = buildStairs(stairOpts(sp.width, H));
       const z = Math.min(L.front(x - sp.width / 2), L.front(x + sp.width / 2), L.front(x));
       s.position.set(x, 0, z - 0.01); s.name = 'Stage_FrontStairs'; G.stage.add(s);
     }
+  }
+  for (const a of sideStairsPlan(st, L)) {
+    const s = buildStairs(stairOpts(a.w, a.h));
+    s.position.set(a.x, 0, a.z); s.rotation.y = a.ry; s.name = a.name; G.stage.add(s);
   }
   // ひな壇（奥の上段）
   const up = st.upper;

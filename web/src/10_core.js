@@ -24,7 +24,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
    - LEDモニター = カメラ → RenderTexture → ドットシェーダー（VRCでもそのまま同構成が可能）。
    ===================================================================== */
 
-const APP_VERSION = '0.8.1';
+const APP_VERSION = '0.10.0';
 const DEG = Math.PI / 180;
 const TAU = Math.PI * 2;
 const $ = (s, r = document) => r.querySelector(s);
@@ -84,7 +84,7 @@ function baseState() {
       reflect: true, reflectStrength: 0.55,
       bodyColor: '#12142a', front: 'panel', frontColor: '#1a1d3a', frontGlow: '#ff6fd8',
       edge: true, edgeColor: '#6fe6ff', edgeIntensity: 2.2, edgeBottom: true,
-      steps: { on: true, pos: 'center', width: 8, count: 4, tread: 0.42, sideX: 5, color: '#20264f', led: true, led1: '#7fe8ff', led2: '#ff8ad8' },
+      steps: { on: true, pos: 'center', width: 8, count: 4, tread: 0.42, sideX: 5, color: '#20264f', led: true, led1: '#7fe8ff', led2: '#ff8ad8', side: 'none', sideZ: 0, back: 'none', backX: 4, sideWidth: 2.4 },
       upper: { on: false, width: 9, depth: 2.6, height: 1.0, stepWidth: 4, stepCount: 3 },
       runway: { on: false, length: 10, width: 2.4 },
       sub: { on: false, shape: 'round', size: 6 },

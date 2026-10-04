@@ -80,7 +80,7 @@ namespace Washitsu.StageKobo.Editor
             }
             EditorUtility.SetDirty(beamMat);
             ctx.Log("演者を照らすスポットライト " + N + " 灯（本物のライト）を客席の上に置きました" +
-                (ctx.udon ? "。リモコン・照明卓の「自分→スポット1／2」で、押した人を追います" : "（ステージに固定）"));
+                (ctx.udon ? "。操作パネルの「特効・カメラ」タブの「自分→スポット1／2」で、押した人を追います" : "（ステージに固定）"));
         }
 
         /// <summary>距離 d のところで半径 r の丸を照らす角度（度）</summary>

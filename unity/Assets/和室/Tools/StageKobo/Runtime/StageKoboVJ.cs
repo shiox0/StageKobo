@@ -5,6 +5,7 @@
 // このコントローラーは「いまの設定」を全員に同期して、毎フレームの値（拍・ドン・パッドの光り方など）をマテリアルに入れる。
 using UdonSharp;
 using UnityEngine;
+using UnityEngine.UI;
 using VRC.SDKBase;
 using VRC.Udon.Common.Interfaces;
 
@@ -53,6 +54,8 @@ namespace Washitsu.StageKobo
         public const int V_FADELEN = 105, V_XFAUTO = 106, V_GEN = 107, V_SPEED = 108, V_COUNT = 109, V_ZOOM = 110, V_IMG = 111, V_IMGRATE = 112;
         public const int V_PAL = 113, V_CMODE = 114, V_HUE = 115, V_FX = 116, V_MIRROR = 117, V_KALE = 118, V_RATE = 119, V_PUMP = 120, V_AMT = 121, V_BRIGHT = 122;
         public const int V_TEXTON = 123, V_TEXTANIM = 124, V_AUTO = 125, V_AUTOBARS = 126, V_PRESET = 127, V_SLOT = 128, V_BACK = 129, V_MAP = 130;
+        // デッキを決めた操作（操作パネルの左 = A、右 = B）：動作番号 + 1000 = デッキA、+ 2000 = デッキB（映像の素・速さ・数・ズーム・画像）
+        public const int DECK_A = 1000, DECK_B = 2000;
 
         [Header("インポーターが設定します（手で変えなくてOK）")]
         public StageKoboController main;
@@ -71,6 +74,12 @@ namespace Washitsu.StageKobo
         // 卓のボタン（ランプ）
         public Material[] deskMats;
         public int[] btnDesk, btnSlot, btnKind, btnAct, btnVal;
+        // 操作パネル（UI）：選ばれているボタンの印と、いまの状態の文字（A・B・まん中。パネルの数だけ）
+        public GameObject[] uiMarks;
+        public int[] uiAct, uiVal;
+        public Text[] infoA, infoB, infoC;
+        public string[] genNames, fxNames, cmodeNames, mirrorNames;
+        float nextInfo;
 
         [UdonSynced] public int[] vi;
         [UdonSynced] public float[] vf;
@@ -268,6 +277,12 @@ namespace Washitsu.StageKobo
                 lastBeat = bi;
                 if (vi[I_IMGRATE] > 0 && (vi[I_GEN] == GEN_IMAGE || vi[I_GEN + 1] == GEN_IMAGE)) RefreshDesks();
             }
+            // 操作パネルの文字（クロスフェーダーの位置などが動くので、ときどき書き直す）
+            if (infoC != null && infoC.Length > 0 && Time.time >= nextInfo)
+            {
+                nextInfo = Time.time + 0.25f;
+                RefreshInfo();
+            }
         }
 
         float Frac(float x) { return x - Mathf.Floor(x); }
@@ -375,6 +390,19 @@ namespace Washitsu.StageKobo
             }
             TakeOwner();
             int ed = vi[I_EDIT];
+            int deck = -1;   // 操作パネルの「デッキを決めた操作」
+            if (act >= DECK_A)
+            {
+                deck = act >= DECK_B ? 1 : 0;
+                act = act % 1000;
+                ed = deck;
+            }
+            if (deck >= 0 && (act == V_GEN || act == V_IMG))
+            {
+                PickSourceOn(deck, act == V_IMG ? GEN_IMAGE : val, act == V_IMG ? val : -1);
+                Sync();
+                return;
+            }
             if (act == V_BLACK) vi[I_BLACK] = vi[I_BLACK] == 1 ? 0 : 1;
             else if (act == V_EDIT) vi[I_EDIT] = val == 1 ? 1 : 0;
             else if (act == V_TAKE) vi[I_TAKE] = vi[I_TAKE] == 1 ? 0 : 1;
@@ -415,6 +443,19 @@ namespace Washitsu.StageKobo
             else if (act == V_BACK) vi[I_BACK] = val;
             else if (act == V_MAP) vi[I_MAP] = val;
             Sync();
+        }
+
+        /// <summary>
+        /// 操作パネル：決めたデッキに映像の素を入れる。映っているデッキならすぐ変わる。
+        /// 映っていないデッキ（裏で準備）は、「選んだら切り替え」が ON なら拍に合わせて切り替える（OFF ならそのまま待つ）
+        /// </summary>
+        void PickSourceOn(int deck, int gen, int img)
+        {
+            vi[I_GEN + deck] = gen;
+            if (img >= 0) vi[I_IMG + deck] = img;
+            if (gen == GEN_IMAGE) { double b = Beat(); vf[F_IMGAT + deck] = (float)(b - b % 1.0 + (deck == ShownDeck() ? 0.0 : 1.0)); }
+            vi[I_EDIT] = deck;
+            if (vi[I_TAKE] == 1 && deck != ShownDeck()) Fade(deck, vi[I_FADELEN]);
         }
 
         /// <summary>映像の素を選ぶ。「選んだら切り替え」なら見えていない方のデッキに入れて、拍に合わせて切り替える</summary>
@@ -520,6 +561,13 @@ namespace Washitsu.StageKobo
         public bool IsOn(int act, int val)
         {
             int ed = vi[I_EDIT];
+            if (act >= DECK_A)
+            {
+                int dk = act >= DECK_B ? 1 : 0;
+                act = act % 1000;
+                if (act == V_IMG) return vi[I_GEN + dk] == GEN_IMAGE && ImgIndex(dk) == val;
+                ed = dk;
+            }
             if (act == V_BLACK) return vi[I_BLACK] == 1;
             if (act == V_EDIT) return ed == val;
             if (act == V_TAKE) return vi[I_TAKE] == 1;
@@ -555,9 +603,89 @@ namespace Washitsu.StageKobo
             return false;
         }
 
+        // ------------------------------------------------------------------ 操作パネル（UI）
+
+        /// <summary>操作パネルの印（選ばれているボタン）と状態の文字</summary>
+        public void RefreshUI()
+        {
+            if (vi == null || vi.Length != NI || vf == null || vf.Length != NF) return;
+            if (uiMarks != null && uiAct != null && uiVal != null)
+                for (int i = 0; i < uiMarks.Length; i++)
+                {
+                    if (uiMarks[i] == null) continue;
+                    bool on = IsOn(uiAct[i], uiVal[i]);
+                    if (uiMarks[i].activeSelf != on) uiMarks[i].SetActive(on);
+                }
+            RefreshInfo();
+        }
+
+        string NameOf(string[] names, int i, string fallback)
+        {
+            if (names == null || i < 0 || i >= names.Length || names[i] == null || names[i] == "") return fallback;
+            return names[i];
+        }
+
+        string SpeedName(float s)
+        {
+            if (s < 0.3f) return "¼";
+            if (s < 0.75f) return "½";
+            if (s > 3f) return "4";
+            if (s > 1.5f) return "2";
+            return "1";
+        }
+
+        string DeckText(int k)
+        {
+            int shown = ShownDeck();
+            int g = vi[I_GEN + k];
+            string src = g == GEN_IMAGE ? "画像 " + (ImgIndex(k) + 1).ToString() : NameOf(genNames, g, "映像" + g.ToString());
+            return (k == 0 ? "デッキA" : "デッキB") + (shown == k ? "　● いま映っている" : "　○ 裏で準備（待機）")
+                + "\n" + src
+                + "\n速さ ×" + SpeedName(vf[F_SPD + k]) + "　数 " + vi[I_CNT + k].ToString() + "　ズーム " + Mathf.RoundToInt(vf[F_ZOOM + k] * 100f).ToString() + "%";
+        }
+
+        string CenterText()
+        {
+            float xf = Mathf.Clamp01(XfNow(Beat()));
+            int n = Mathf.RoundToInt(xf * 10f);
+            string bar = "";
+            for (int i = 0; i < 10; i++) bar += i < n ? "■" : "□";
+            string mix = "A " + bar + " B";
+            if (vf[F_FLEN] > 0f) mix += "（" + (vf[F_FTO] >= 0.5f ? "B" : "A") + " へ切り替え中）";
+            else if (vi[I_XFAUTO] > 0) mix += "（" + vi[I_XFAUTO].ToString() + "拍で交互）";
+            int fxb = vi[I_FX];
+            string fxs = "";
+            for (int b = 0; b <= FX_SCAN; b++)
+            {
+                if (!Bit(fxb, b)) continue;
+                string nm = NameOf(fxNames, b, "FX" + b.ToString());
+                if (b == FX_KALEIDO) nm += vi[I_KALEN].ToString();
+                fxs += (fxs == "" ? "" : "・") + nm;
+            }
+            if (fxs == "") fxs = "なし";
+            int p = vi[I_PAL];
+            string pal = p < 0 ? "照明の色" : "パレット" + (p + 1).ToString();
+            string hue = vf[F_HUE] > 1f ? "・色が速く回る" : vf[F_HUE] > 0f ? "・色が回る" : "";
+            return "出力　" + mix
+                + "\nエフェクト：" + fxs + "　ミラー：" + NameOf(mirrorNames, vi[I_MIRROR], "なし")
+                + "\n色：" + pal + "・" + NameOf(cmodeNames, vi[I_CMODE], "") + hue
+                + "\nドン " + (vf[F_RATE] < 0.75f ? "½" : vf[F_RATE] > 3f ? "4" : vf[F_RATE] > 1.5f ? "2" : "1") + "拍　ドゥン " + (vf[F_PUMP] <= 0.01f ? "なし" : vf[F_PUMP] < 0.4f ? "弱" : vf[F_PUMP] > 0.8f ? "強" : "中")
+                + "　明るさ " + Mathf.RoundToInt(vf[F_BRIGHT] * 100f).ToString() + "%"
+                + (vi[I_BLACK] == 1 ? "　■暗転中" : "") + (vi[I_AUTO] == 1 ? "　オートVJ " + vi[I_AUTOBARS].ToString() + "小節" : "");
+        }
+
+        void RefreshInfo()
+        {
+            if (vi == null || vi.Length != NI || vf == null || vf.Length != NF) return;
+            if (infoA != null && infoA.Length > 0) { string t = DeckText(0); for (int i = 0; i < infoA.Length; i++) if (infoA[i] != null) infoA[i].text = t; }
+            if (infoB != null && infoB.Length > 0) { string t = DeckText(1); for (int i = 0; i < infoB.Length; i++) if (infoB[i] != null) infoB[i].text = t; }
+            if (infoC != null && infoC.Length > 0) { string t = CenterText(); for (int i = 0; i < infoC.Length; i++) if (infoC[i] != null) infoC[i].text = t; }
+        }
+
         /// <summary>卓のランプをまとめて更新（24 個ずつを1つの数にして、マテリアルの _B0〜_B3 に入れる）</summary>
         public void RefreshDesks()
         {
+            RefreshUI();
             if (deskMats == null || btnAct == null || vi == null || vi.Length != NI || vf == null || vf.Length != NF) return;
             int nd = deskMats.Length;
             float[] w = new float[nd * 16];

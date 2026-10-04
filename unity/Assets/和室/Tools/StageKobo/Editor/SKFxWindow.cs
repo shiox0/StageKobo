@@ -35,8 +35,8 @@ namespace Washitsu.StageKobo.Editor
             EditorGUILayout.HelpBox(
                 "① ワールドの、出したい場所にパーティクル（Particle System）を置く（ステージ StageKobo_～ の外に）\n" +
                 "② 下の「＋ ボタンを足す」で、ボタンの名前と、出すパーティクルを決める\n" +
-                "③「リモコン・卓に反映」を押す（ステージを前回と同じ設定で組み立て直します）\n" +
-                "→ 正面のリモコンと、ステージ裏の照明卓の「追加の特効」にボタンが増えます（UdonSharp 版は全員の画面で出ます）", MessageType.Info);
+                "③「操作パネルに反映」を押す（ステージを前回と同じ設定で組み立て直します）\n" +
+                "→ 操作パネル（手前・裏）の「特効・カメラ」タブの「追加の特効」にボタンが増えます（UdonSharp 版は全員の画面で出ます）", MessageType.Info);
 
             var s = SKFx.Find();
             if (s == null)
@@ -68,7 +68,7 @@ namespace Washitsu.StageKobo.Editor
                         if (GUILayout.Button("消す", GUILayout.Width(44))) remove = i;
                     }
                     var name = e.FindPropertyRelative("name");
-                    name.stringValue = EditorGUILayout.TextField(new GUIContent("ボタンの名前", "リモコンと卓のボタンに出る文字（卓は短い方が読みやすい：5〜6文字くらい）"), name.stringValue);
+                    name.stringValue = EditorGUILayout.TextField(new GUIContent("ボタンの名前", "操作パネルのボタンに出る文字（短い方が読みやすい：8文字くらいまで）"), name.stringValue);
                     var mode = e.FindPropertyRelative("mode");
                     mode.intValue = EditorGUILayout.Popup(new GUIContent("出し方"), Mathf.Clamp(mode.intValue, 0, 1), Modes.Select(x => new GUIContent(x)).ToArray());
                     if (mode.intValue == 0)
@@ -137,7 +137,7 @@ namespace Washitsu.StageKobo.Editor
             EditorGUILayout.Space(10);
             EditorGUILayout.HelpBox("ボタンを増やしたり名前を変えたりしたら、下のボタンでステージを組み立て直すと反映されます（インポーターで前回「組み立てる」を押したときと同じ設定）。\n" +
                                     "パーティクルの場所・見た目を変えただけなら、組み立て直さなくても大丈夫です。", MessageType.None);
-            if (GUILayout.Button("リモコン・卓に反映（ステージを組み立て直す）", GUILayout.Height(34)))
+            if (GUILayout.Button("操作パネルに反映（ステージを組み立て直す）", GUILayout.Height(34)))
             {
                 string l = StageKoboImporterWindow.RebuildLast();
                 if (l == null)

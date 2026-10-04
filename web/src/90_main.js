@@ -222,6 +222,6 @@ function init() {
   frame();
 }
 // デバッグ・自動化用の窓口（ブラウザのコンソールから触れる）
-window.STAGEKOBO = { get state() { return S; }, surfStats: () => ({ ...SURF_STATS, cached: SURF_CACHE.size }), setCue, recallScene, setLive, triggerFx, applyPreset, addAsset, select, exportUnity: buildUnityExport, markDirty, setView, camera, orbit, RT_ASSETS, REG, LT, SCAMS, commit, normalize: (s) => normalizeState(s),
+window.STAGEKOBO = { get state() { return S; }, scene, surfStats: () => ({ ...SURF_STATS, cached: SURF_CACHE.size }), setCue, recallScene, setLive, triggerFx, applyPreset, addAsset, select, exportUnity: buildUnityExport, markDirty, setView, camera, orbit, RT_ASSETS, REG, LT, SCAMS, commit, normalize: (s) => normalizeState(s),
   vj: { VJP, VJRT, VJOUT, VJ_HELD, get engine() { return VJ_MAIN; }, trigger: vjTrigger, fade: vjFade, preset: (i) => { vjApplyPreset(VJ_PRESETS[i]); buildVJRemote(); }, open: toggleVJRemote, full: vjEnterFull, exitFull: vjExitFull, openWindow: vjOpenWindow, closeWindow: vjCloseWindow, hold: VJ_HOLD, ui: () => buildVJRemote() } };
 init();
